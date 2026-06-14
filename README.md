@@ -1,7 +1,7 @@
 # MDict go web dictionary
 
 ## Configuration
-The following default values are preset and can be overridden with env vars
+Configuration parameters can be set in `config.toml` or via env vars (which take prescedemce over `config.toml`); if neither are set then default values are used.
 
 | Variable               | Default                       | Description |
 |-----------------------:|--------------------------------|------------|
@@ -13,7 +13,7 @@ The following default values are preset and can be overridden with env vars
 | NO_BROWSER             | (unset = open browser)         | set to non-empty value to prevent browser autostart
 
 ## Build
-With [golang environment is installed](https://go.dev/doc/install) the following command will build and run the binary
+With [golang environment is installed](https://go.dev/doc/install) use the following command to build and run the `mdict-server` binary:
 
 ```sh
 make
@@ -21,7 +21,7 @@ make
 
 ## Run
 
-Run compiled dictionary server:
+Run pre-compiled dictionary server:
 
 ```sh
 ./mdict-go/mdict-server

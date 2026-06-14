@@ -69,8 +69,9 @@ func getReader(path string) (*Reader, error) {
 }
 
 func main() {
-	dictDir = mustAbs(expandTilde(envOr("DICT_DIR", "~/Dictionaries")))
-	assetRoot = expandTilde(envOr("MDICT_TEMP_ASSETS_DIR", "/var/www"))
+	LoadConfig(getConfigPath())
+	dictDir = mustAbs(expandTilde(getConf("DICT_DIR", "~/Dictionaries")))
+	assetRoot = expandTilde(getConf("MDICT_TEMP_ASSETS_DIR", "/var/www"))
 
 	if !dirExists(assetRoot) {
 		fmt.Fprintf(os.Stderr, "Creating temporary asset directory %s for extracted .mdd resources...\n", assetRoot)
@@ -79,8 +80,8 @@ func main() {
 		}
 	}
 
-	ip := envOr("SERVER_IP", "127.0.0.1")
-	port := envOr("SERVER_PORT", "8808")
+	ip := getConf("SERVER_IP", "127.0.0.1")
+	port := getConf("SERVER_PORT", "8808")
 	addr := ip + ":" + port
 
 	fmt.Printf("DICT_DIR: %s\n", dictDir)
@@ -98,7 +99,7 @@ func main() {
 	url := fmt.Sprintf("http://%s/", addr)
 	fmt.Printf("Starting MDict server: %s\n", url)
 
-	if os.Getenv("NO_BROWSER") == "" {
+	if getConf("NO_BROWSER", "") == "" {
 		if err := browser.OpenURL(url); err != nil {
 			fmt.Fprintf(os.Stderr, "could not open browser: %v\n", err)
 		}
@@ -137,11 +138,14 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	if !dirExists(dictDir) {
-		fmt.Fprintf(w, `<h3 style='color:red'>Dictionary directory %s does not exist!</h3>
-		`+"\n"+`<p>Please set the environment variable <tt>DICT_DIR</tt> to a valid directory path containing your .mdx/.mdd files.</p>
-		  Or pass the env var from command line:<br>
-		  <pre>DICT_DIR=/path/to/dict/dir ./mdict-server</pre>
-		  `, dictDir)
+		fmt.Fprintf(w, `<h3 style='color:red'>Not found: DICT_DIR=%s</h3>
+		`+"\n"+`<p>The path to the directory with .mdx/.mdd files can be set via:
+		<ol>
+		<li><tt>DICT_DIR</tt> in <tt>config.toml</tt> 
+		<li>As environment variable <tt>DICT_DIR</tt>
+		<li>Passed from command line e.g. <pre>DICT_DIR=/path/to/dict/dir ./mdict-server</pre>
+		</ol>
+		`, dictDir)
 		return
 	}
 
@@ -249,4 +253,20 @@ func mustAbs(p string) string {
 func dirExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
+}
+
+func getConfigPath() string {
+	// 1. Check if a path was provided via Environment Variable (Highest Priority)
+	if envPath := os.Getenv("CONFIG_PATH"); envPath != "" {
+		return envPath
+	}
+
+	// 2. Try to get the path relative to the binary
+	exePath, err := os.Executable()
+	if err == nil {
+		return filepath.Join(filepath.Dir(exePath), "config.toml")
+	}
+
+	// 3. Fallback: Look in Current Working Directory
+	return "config.toml"
 }
