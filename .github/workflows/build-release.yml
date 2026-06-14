@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag for the release (e.g., v1.0.0)"
-        required: true
+        description: "Tag for the release (e.g., v0.1)"
+        required: false
       release_name:
         description: "mdict-server"
         required: false
@@ -23,10 +23,10 @@ jobs:
         target: [linux-amd64, windows-amd64, darwin-amd64, darwin-arm64]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
           go-version: "1.26"
 
@@ -55,13 +55,22 @@ jobs:
 
   release:
     needs: build
+    if: always() && inputs.tag != ''
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag }}
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          # must fetch full history so a new tag can be created if it does not exist
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -69,12 +78,50 @@ jobs:
         run: |
           find artifacts -type f -name "mdict-server-*" | sort
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event.inputs.tag }}
-          name: ${{ github.event.inputs.release_name }} ${{ github.event.inputs.tag }}
-          draft: false
-          prerelease: false
-          files: |
-            artifacts/*/*
+
+      - name: Create git tag if it does not exist
+        run: |
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}"; then
+            echo "Tag ${TAG} already exists — skipping tag creation."
+          else
+            echo "Tag ${TAG} does not exist — creating it from HEAD."
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+            echo "Tag ${TAG} pushed."
+          fi
+
+      - name: Create or update GitHub release
+        # gh release create  → used when no release exists yet for this tag.
+        #   • Automatically uses the tag that was pushed (or the existing one).
+        #   • --generate-notes asks GitHub to auto-fill the release notes from
+        #     commits since the previous release.
+        #
+        # gh release upload --clobber  → used when a release already exists.
+        #   • --clobber deletes any asset with the same filename before
+        #     re-uploading, giving us idempotent replace semantics.
+        #   • WARNING: gh documents that if the upload fails after --clobber,
+        #     the original asset is gone. Acceptable here because we always
+        #     have the artifact zip as a fallback.
+        run: |
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            echo "Release for ${TAG} already exists — replacing assets."
+            gh release upload "${TAG}" artifacts/*/* --clobber
+          else
+            echo "No release for ${TAG} yet — creating release and uploading assets."
+            gh release create "${TAG}" artifacts/*/* \
+              --title "${TAG}" \
+              --generate-notes
+          fi
+
+
+      # - name: Create Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: ${{ github.event.inputs.tag }}
+      #     name: ${{ github.event.inputs.release_name }} ${{ github.event.inputs.tag }}
+      #     draft: false
+      #     prerelease: false
+      #     files: |
+      #       artifacts/*/*
