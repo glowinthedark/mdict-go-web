@@ -1,0 +1,7 @@
+DICT_DIR = "~/Dictionaries"
+MDICT_TEMP_ASSETS_DIR = "~/.mdict/res"
+SERVER_IP = "127.0.0.1"
+SERVER_PORT = "8808"
+SPEEXDEC = "/usr/local/bin/speexdec"
+DEFAULT_DICT = "ldoce6.mdx"
+# NO_BROWSER = ""
