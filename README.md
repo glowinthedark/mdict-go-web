@@ -18,8 +18,8 @@ Configuration parameters can be set in `config.toml` or via env vars (which take
 | no browser | `--no-browser` | `NO_BROWSER=1` | `(open browser)` |
 | config file | `--config` | `CONFIG_PATH` | `(auto-detect)` |
 
-## Build
-With [golang environment is installed](https://go.dev/doc/install) use the following command to build and run the `mdict-server` binary:
+## Build from source
+With [golang environment installed](https://go.dev/doc/install) use the following command to build and run the `mdict-server` binary:
 
 ```sh
 make
