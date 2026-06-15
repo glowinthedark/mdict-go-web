@@ -3,15 +3,16 @@
 ## Configuration
 Configuration parameters can be set in `config.toml` or via env vars (which take prescedemce over `config.toml`); if neither are set then default values are used.
 
-| Variable               | Default                       | Description |
-|-----------------------:|--------------------------------|------------|
-| DICT_DIR               | ~/Dictionaries                 | folder containing `.mdx/.mdd` (scanned recursively)
-| DEFAULT_DICT           |                                | relative path to the default dictionary
-| MDICT_TEMP_ASSETS_DIR  | ~/.mdict/res                   | temporary assets store
-| SERVER_IP              | 127.0.0.1                      | bind IP
-| SERVER_PORT            | 8808                           | port
-| SPEEXDEC               | /usr/local/bin/speexdec        | location of `speexdec` (for `.spx` audio decoding)
-| NO_BROWSER             | (unset = open browser)         | set to non-empty value to prevent browser autostart
+| Param | CLI flag | Env var or `config.toml` key | Default |
+|---|---|---|---|
+| dict dir | `--dict-dir` | `DICT_DIR` | `~/Dictionaries` |
+| asset dir | `--asset-dir` | `MDICT_TEMP_ASSETS_DIR` | `~/.mdict/res` |
+| default dict | `--default-dict` | `DEFAULT_DICT` | `(none, rel. to dict-dir)` |
+| server IP | `--ip` | `SERVER_IP` | `127.0.0.1` |
+| server port | `--port` | `SERVER_PORT` | `8808` |
+| speexdec path | `--speexdec` | `SPEEXDEC` | `/usr/bin/speexdec` |
+| no browser | `--no-browser` | `NO_BROWSER=1` | `(open browser)` |
+| config file | `--config` | `CONFIG_PATH` | `(auto-detect)` |
 
 ## Build
 With [golang environment is installed](https://go.dev/doc/install) use the following command to build and run the `mdict-server` binary:

@@ -1,19 +1,32 @@
 // MDict dictionary self-contained HTTP server.
 //
-// a single binary serves the search page, handles ?q / ?path / ?max queries,
-// and serves .mdd resources extracted on demand into ASSET_ROOT.
+// A single binary serves the search page, handles ?q / ?path / ?max queries,
+// and serves .mdd resources extracted on demand into assetRoot.
 //
-// Configuration (env var -> hard-coded fallback):
+// Configuration priority (highest → lowest):
 //
-//	DICT_DIR               ~/Dictionaries      dir of .mdx/.mdd files
-//	MDICT_TEMP_ASSETS_DIR  ~/.mdict/res    extracted-asset root
-//	SERVER_IP              127.0.0.1
-//	SERVER_PORT            8808
-//	SPEEXDEC               /usr/local/bin/speexdec
+//	CLI flag  >  environment variable  >  config.toml  >  built-in default
+//
+// Config file search order:
+//
+//	--config / CONFIG_PATH  →  <exe-dir>/config.toml  →  ~/.mdict/config.toml
+//	→  /etc/mdict/config.toml  →  ./config.toml
+//
+// Param           CLI flag        Env var                TOML key               Default
+// ─────────────────────────────────────────────────────────────────────────────────────
+// dict dir        --dict-dir      DICT_DIR               DICT_DIR               ~/Dictionaries
+// asset dir       --asset-dir     MDICT_TEMP_ASSETS_DIR  MDICT_TEMP_ASSETS_DIR  ~/.mdict/res
+// default dict    --default-dict  DEFAULT_DICT           DEFAULT_DICT           (none, rel. to dict-dir)
+// server IP       --ip            SERVER_IP              SERVER_IP              127.0.0.1
+// server port     --port          SERVER_PORT            SERVER_PORT            8808
+// speexdec path   --speexdec      SPEEXDEC               SPEEXDEC               /usr/bin/speexdec
+// no browser      --no-browser    NO_BROWSER=1           NO_BROWSER=1           (open browser)
+// config file     --config        CONFIG_PATH            —                      (auto-detect)
 package main
 
 import (
 	_ "embed"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -44,67 +57,144 @@ const (
 	dictOptionsPlaceholder = "$$${{{DICT_OPTIONS}}}"
 )
 
-// Resolved configuration, set in main.
+// Resolved configuration — set once in main, read-only thereafter.
 var (
-	dictDir     string
-	assetRoot   string
-	defaultPath string
+	dictDir      string // absolute path to .mdx/.mdd directory
+	assetRoot    string // absolute path to extracted-asset cache
+	defaultDict  string // absolute path to default dictionary (joined from dictDir + rel)
+	speexDecPath string // absolute path to speexdec binary
+	noBrowser    bool
 )
 
-// Reader cache: the server is long-lived
-// so each dictionary is parsed once and reused across requests.
+// Reader cache: server is long-lived; each dictionary parsed once, reused across requests.
 var (
 	readerCacheMu sync.Mutex
 	readerCache   = map[string]*Reader{}
 )
 
-func getReader(path string) (*Reader, error) {
+func getReader(p string) (*Reader, error) {
 	readerCacheMu.Lock()
 	defer readerCacheMu.Unlock()
-	if r, ok := readerCache[path]; ok {
+	if r, ok := readerCache[p]; ok {
 		return r, nil
 	}
-	r, err := openReader(path)
+	r, err := openReader(p)
 	if err != nil {
 		return nil, err
 	}
-	readerCache[path] = r
+	readerCache[p] = r
 	return r, nil
 }
 
-func main() {
-	LoadConfig(getConfigPath())
-	dictDir = mustAbs(expandTilde(getConf("DICT_DIR", "~/Dictionaries")))
-	assetRoot = expandTilde(getConf("MDICT_TEMP_ASSETS_DIR", "~/.mdict/res"))
-	defaultPath = expandTilde(getConf("DEFAULT_DICT", ""))
+// conf resolves a parameter through the full priority chain:
+// CLI flag → env var → config.toml key → built-in fallback.
+// fval/fset come from flag.FlagSet: fset is true only when the user explicitly passed the flag.
+func conf(fval string, fset bool, key, fallback string) string {
+	if fset && fval != "" {
+		return fval
+	}
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return getConf(key, fallback)
+}
 
+// mustAbs expands ~ and resolves p to an absolute path.
+// Returns p unchanged on empty input or resolution failure.
+func mustAbs(p string) string {
+	if p == "" {
+		return ""
+	}
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, strings.TrimPrefix(p, "~/"))
+		}
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return p
+}
+
+func dirExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
+}
+
+func main() {
+	// ── CLI flags ────────────────────────────────────────────────────────────
+	fset := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	fset.Usage = usageFn(fset)
+
+	fConfig := fset.String("config", "", "path to config.toml (overrides auto-detect)")
+	fDictDir := fset.String("dict-dir", "", "directory containing .mdx/.mdd files")
+	fAssetDir := fset.String("asset-dir", "", "directory for extracted .mdd resources (cache)")
+	fDefaultDict := fset.String("default-dict", "", "default dictionary, relative to dict-dir (e.g. en/Oxford.mdx)")
+	fIP := fset.String("ip", "", "server listen IP")
+	fPort := fset.String("port", "", "server listen port")
+	fSpeexDec := fset.String("speexdec", "", "path to speexdec binary (Speex audio decoding)")
+	fNoBrowser := fset.Bool("no-browser", false, "do not open browser on startup")
+
+	if err := fset.Parse(os.Args[1:]); err != nil {
+		os.Exit(0) // -h/--help already printed usage
+	}
+
+	set := map[string]bool{}
+	fset.Visit(func(f *flag.Flag) { set[f.Name] = true })
+
+	// ── Config file ──────────────────────────────────────────────────────────
+	configPath := *fConfig
+	if configPath == "" {
+		configPath = getConfigPath()
+	}
+	LoadConfig(configPath)
+
+	// ── Resolve parameters (CLI > env > toml > default) ─────────────────────
+	// Path params run through mustAbs (handles ~ expansion + absolutization).
+	dictDir = mustAbs(conf(*fDictDir, set["dict-dir"], "DICT_DIR", "~/Dictionaries"))
+	assetRoot = mustAbs(conf(*fAssetDir, set["asset-dir"], "MDICT_TEMP_ASSETS_DIR", "~/.mdict/res"))
+	speexDecPath = mustAbs(conf(*fSpeexDec, set["speexdec"], "SPEEXDEC", "/usr/local/bin/speexdec"))
+
+	// defaultDict is relative to dictDir — join after both are resolved.
+	if rel := conf(*fDefaultDict, set["default-dict"], "DEFAULT_DICT", ""); rel != "" {
+		defaultDict = mustAbs(filepath.Join(dictDir, rel))
+	}
+
+	// Scalar params.
+	ip := conf(*fIP, set["ip"], "SERVER_IP", "127.0.0.1")
+	port := conf(*fPort, set["port"], "SERVER_PORT", "8808")
+
+	// --no-browser: flag OR env/toml value of "1".
+	noBrowser = *fNoBrowser || getConf("NO_BROWSER", os.Getenv("NO_BROWSER")) == "1"
+
+	// ── Asset dir bootstrap ──────────────────────────────────────────────────
 	if !dirExists(assetRoot) {
-		fmt.Fprintf(os.Stderr, "Creating temporary asset directory %s for extracted .mdd resources...\n", assetRoot)
+		fmt.Fprintf(os.Stderr, "creating asset dir %s\n", assetRoot)
 		if err := os.MkdirAll(assetRoot, 0o755); err != nil {
 			fmt.Fprintf(os.Stderr, "could not create asset dir %s: %v\n", assetRoot, err)
 		}
 	}
 
-	ip := getConf("SERVER_IP", "127.0.0.1")
-	port := getConf("SERVER_PORT", "8808")
+	// ── Startup summary ──────────────────────────────────────────────────────
 	addr := ip + ":" + port
+	fmt.Printf("config:    %s\n", configPath)
+	fmt.Printf("dict-dir:  %s\n", dictDir)
+	fmt.Printf("asset-dir: %s\n", assetRoot)
+	fmt.Printf("speexdec:  %s\n", speexDecPath)
 
-	fmt.Printf("DICT_DIR: %s\n", dictDir)
-	fmt.Printf("MDICT_TEMP_ASSETS_DIR: %s\n", assetRoot)
-
+	// ── HTTP server ──────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
 
-	// Bind before opening the browser so the URL is live when it loads.
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not bind %s: %v\n", addr, err)
 		os.Exit(1)
 	}
-	url := fmt.Sprintf("http://%s/", addr)
-	fmt.Printf("Starting MDict server: %s\n", url)
+	url := "http://" + addr + "/"
+	fmt.Printf("listening: %s\n", url)
 
-	if getConf("NO_BROWSER", "") == "" {
+	if !noBrowser {
 		if err := browser.OpenURL(url); err != nil {
 			fmt.Fprintf(os.Stderr, "could not open browser: %v\n", err)
 		}
@@ -115,6 +205,77 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// usageFn returns the --help handler with full env/toml cross-reference.
+func usageFn(_ *flag.FlagSet) func() {
+	return func() {
+		fmt.Fprint(os.Stderr, `mdict-server — MDict (.mdx/.mdd) HTTP dictionary server
+
+USAGE
+  mdict-server [flags]
+
+FLAGS
+  --config       <path>   Path to config.toml (overrides auto-detect)
+                          env: CONFIG_PATH
+
+  --dict-dir     <path>   Directory with .mdx/.mdd dictionary files
+                          env: DICT_DIR              toml: DICT_DIR
+                          default: ~/Dictionaries
+
+  --asset-dir    <path>   Cache dir for extracted .mdd resources
+                          env: MDICT_TEMP_ASSETS_DIR  toml: MDICT_TEMP_ASSETS_DIR
+                          default: ~/.mdict/res
+
+  --default-dict <rel>    Default dictionary, relative to dict-dir
+                          e.g. "en/Oxford.mdx"
+                          env: DEFAULT_DICT           toml: DEFAULT_DICT
+
+  --ip           <addr>   Listen IP address
+                          env: SERVER_IP              toml: SERVER_IP
+                          default: 127.0.0.1
+
+  --port         <port>   Listen port
+                          env: SERVER_PORT            toml: SERVER_PORT
+                          default: 8808
+
+  --speexdec     <path>   Path to speexdec binary (Speex audio decoding)
+                          env: SPEEXDEC               toml: SPEEXDEC
+                          default: /usr/bin/speexdec
+
+  --no-browser            Do not open a browser tab on startup
+                          env/toml: NO_BROWSER=1
+
+  -h, --help              Show this help and exit
+
+CONFIG FILE SEARCH ORDER
+  1. --config flag / CONFIG_PATH env var
+  2. <executable-dir>/config.toml
+  3. ~/.mdict/config.toml
+  4. /etc/mdict/config.toml
+  5. ./config.toml
+
+PRIORITY (highest → lowest)
+  CLI flag  >  environment variable  >  config.toml  >  built-in default
+
+EXAMPLE config.toml
+  DICT_DIR              = "/data/dicts"
+  MDICT_TEMP_ASSETS_DIR = "/tmp/mdict-res"
+  DEFAULT_DICT          = "en/Oxford.mdx"
+  SERVER_IP             = "0.0.0.0"
+  SERVER_PORT           = "9000"
+  SPEEXDEC              = "/usr/bin/speexdec"
+  NO_BROWSER            = "1"
+
+EXAMPLES
+  mdict-server
+  mdict-server --dict-dir ~/Books/Dicts --port 9090 --no-browser
+  mdict-server --config /etc/mdict/config.toml --default-dict "en/Oxford.mdx"
+  SERVER_PORT=9000 mdict-server
+`)
+	}
+}
+
+// ── HTTP handlers ─────────────────────────────────────────────────────────────
 
 func handleRoot(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
@@ -128,8 +289,8 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serveAsset serves an extracted resource from ASSET_ROOT. Relative refs like
-// "img/x.png" in a definition resolve here
+// serveAsset serves extracted .mdd resources from assetRoot.
+// Relative refs like "img/x.png" inside definitions resolve here.
 func serveAsset(w http.ResponseWriter, r *http.Request) {
 	rel := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 	if rel == "" || rel == "." || strings.HasPrefix(rel, "..") {
@@ -143,14 +304,13 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	if !dirExists(dictDir) {
-		fmt.Fprintf(w, `<h3 style='color:red'>Not found: DICT_DIR=%s</h3>
-		`+"\n"+`<p>The path to the directory with .mdx/.mdd files can be set via:
-		<ol>
-		<li><tt>DICT_DIR</tt> in <tt>config.toml</tt> 
-		<li>As environment variable <tt>DICT_DIR</tt>
-		<li>Passed from command line e.g. <pre>DICT_DIR=/path/to/dict/dir ./mdict-server</pre>
-		</ol>
-		`, dictDir)
+		fmt.Fprintf(w, `<h3 style='color:red'>DICT_DIR not found: %s</h3>
+<p>Set the dictionary directory via one of:
+<ol>
+<li>CLI:     <tt>--dict-dir /path/to/dicts</tt></li>
+<li>Env var: <tt>DICT_DIR=/path/to/dicts</tt></li>
+<li>TOML:    <tt>DICT_DIR = "/path/to/dicts"</tt></li>
+</ol>`, dictDir)
 		return
 	}
 
@@ -162,11 +322,14 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 			maxN = n
 		}
 	}
-	relPath := qv.Get("path")
-	if relPath == "" {
-		relPath = defaultPath
+
+	// ?path= is relative to dictDir; falls back to configured defaultDict (already absolute).
+	var absPathIn string
+	if rel := qv.Get("path"); rel != "" {
+		absPathIn = mustAbs(filepath.Join(dictDir, rel))
+	} else {
+		absPathIn = defaultDict
 	}
-	absPathIn := mustAbs(filepath.Join(dictDir, relPath))
 
 	html := templateHTML
 	var reader *Reader
@@ -182,9 +345,7 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		html = strings.ReplaceAll(html, dictNamePlaceholder, "")
 	}
-
 	html = strings.ReplaceAll(html, dictOptionsPlaceholder, buildOptions(absPathIn))
-
 	io.WriteString(w, html+"\n")
 
 	if reader != nil {
@@ -202,8 +363,8 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "</div>\n</div>\n</body>\n</html>\n")
 }
 
-// buildOptions renders the <option> list for every .mdx under DICT_DIR, sorted
-// by filename (case-insensitive), marking the selected one.
+// buildOptions renders <option> elements for every .mdx under dictDir,
+// sorted case-insensitively by filename.
 func buildOptions(selected string) string {
 	var files []string
 	_ = filepath.WalkDir(dictDir, func(p string, d fs.DirEntry, err error) error {
@@ -215,7 +376,6 @@ func buildOptions(selected string) string {
 		}
 		return nil
 	})
-	// Stable sort by case-folded basename, keep WalkDir's deterministic order.
 	sort.SliceStable(files, func(i, j int) bool {
 		return strings.ToLower(filepath.Base(files[i])) < strings.ToLower(filepath.Base(files[j]))
 	})
@@ -238,39 +398,15 @@ func buildOptions(selected string) string {
 	return b.String()
 }
 
-// ---- config helpers -----------------------------------------------------------
-
-func expandTilde(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(p, "~"), "/"))
-		}
-	}
-	return p
-}
-
-func mustAbs(p string) string {
-	if abs, err := filepath.Abs(p); err == nil {
-		return abs
-	}
-	return p
-}
-
-func dirExists(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.IsDir()
-}
+// ── Config helpers ────────────────────────────────────────────────────────────
 
 func getConfigPath() string {
-	// env var override (highest priority)
 	if envPath := os.Getenv("CONFIG_PATH"); envPath != "" {
 		if isFile(envPath) {
 			return envPath
 		}
 		log.Printf("warning: CONFIG_PATH=%q is not a valid file, ignoring", envPath)
 	}
-
-	// ordered candidate locations
 	candidates := []func() (string, error){
 		func() (string, error) {
 			exe, err := os.Executable()
@@ -280,17 +416,12 @@ func getConfigPath() string {
 			home, err := os.UserHomeDir()
 			return filepath.Join(home, ".mdict", configFileName), err
 		},
-		func() (string, error) {
-			return filepath.Join("/etc/mdict", configFileName), nil
-		},
+		func() (string, error) { return filepath.Join("/etc/mdict", configFileName), nil },
 	}
-
-	for _, candidate := range candidates {
-		if path, err := candidate(); err == nil && isFile(path) {
-			return path
+	for _, fn := range candidates {
+		if p, err := fn(); err == nil && isFile(p) {
+			return p
 		}
 	}
-
-	//  cwd/configFileName
 	return configFileName
 }
