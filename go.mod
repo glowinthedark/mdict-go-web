@@ -1,4 +1,4 @@
-module github.com/glowinthedark/mdict-go-web/mdict-go
+module github.com/glowinthedark/mdict-go-web
 
 go 1.26
 

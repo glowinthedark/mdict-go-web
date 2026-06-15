@@ -70,7 +70,6 @@ jobs:
         run: |
           SUFFIX="${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
           BINARY="mdict-server-${SUFFIX}${{ matrix.ext }}"
-          cd mdict-go
           go build -trimpath -ldflags="-s -w" -o "../${BINARY}" .
 
       - name: Upload artifact

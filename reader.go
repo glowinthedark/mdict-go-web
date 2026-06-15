@@ -18,7 +18,7 @@ import (
 	"sync"
 	"unicode"
 
-	gomdict "mdict-go/internal/gomdict"
+	gomdict "github.com/glowinthedark/mdict-go-web/internal/gomdict"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"

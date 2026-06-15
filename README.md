@@ -30,13 +30,13 @@ make
 Run pre-compiled dictionary server:
 
 ```sh
-./mdict-go/mdict-server
+./mdict-server
 ```
 
 Pass custom configuration parameters via env vars:
 
 ```sh
-DICT_DIR="~/path/to/custom/dictionaries" SERVER_PORT=8888 ./mdict-go/mdict-server
+DICT_DIR="~/path/to/custom/dictionaries" SERVER_PORT=8888 ./mdict-server
 ```
 
 Open in browser:
