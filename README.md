@@ -1,5 +1,5 @@
 # MDict go web dictionary
-Fast, zero-dependency MDict dictionary that runs in your browser (all-in-one-client-server).
+Fast, zero-dependency MDict dictionary that runs in your browser (all-in-one-client-server) on [http://localhost:8808](http://localhost:8808).
 
 ## Download
 Get the version for your OS from [**releases**](https://github.com/glowinthedark/mdict-go-web/releases) - save the binary; `chmod +x mdict-server` and then run it in the terminal. For help use `mdict-server -h`.
