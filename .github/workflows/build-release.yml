@@ -7,7 +7,7 @@ on:
         description: "Tag for the release (e.g., v0.1)"
         required: false
       release_name:
-        description: "mdict-server"
+        description: "mdict-go-web"
         required: false
         default: "mdict-go-web"
 
@@ -69,14 +69,14 @@ jobs:
           GOARM: ${{ matrix.goarm }}
         run: |
           SUFFIX="${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
-          BINARY="mdict-server-${SUFFIX}${{ matrix.ext }}"
+          BINARY="mdict-go-web-${SUFFIX}${{ matrix.ext }}"
           go build -trimpath -ldflags="-s -w" -o "${BINARY}" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mdict-server-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
-          path: mdict-server-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}${{ matrix.ext }}
+          name: mdict-go-web-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
+          path: mdict-go-web-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}${{ matrix.ext }}
 
   release:
     needs: build

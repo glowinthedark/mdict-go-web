@@ -2,7 +2,7 @@
 Fast, zero-dependency MDict dictionary that runs in your browser (all-in-one-client-server) on [http://localhost:8808](http://localhost:8808).
 
 ## Download
-Get the version for your OS from [**releases**](https://github.com/glowinthedark/mdict-go-web/releases) - save the binary; `chmod +x mdict-server` and then run it in the terminal. For help use `mdict-server -h`.
+Get the version for your OS from [**releases**](https://github.com/glowinthedark/mdict-go-web/releases) - save the binary; `chmod +x mdict-go-web` and then run it in the terminal. For help use `mdict-go-web -h`.
 
 ## Configuration
 Configuration parameters can be set in `config.toml` or via env vars (which take prescedemce over `config.toml`); if neither are set then default values are used.
@@ -19,7 +19,7 @@ Configuration parameters can be set in `config.toml` or via env vars (which take
 | config file | `--config` | `CONFIG_PATH` | `(auto-detect)` |
 
 ## Build from source
-With [golang environment installed](https://go.dev/doc/install) use the following command to build and run the `mdict-server` binary:
+With [golang environment installed](https://go.dev/doc/install) use the following command to build and run the `mdict-go-web` binary:
 
 ```sh
 make
@@ -30,13 +30,13 @@ make
 Run pre-compiled dictionary server:
 
 ```sh
-./mdict-server
+./mdict-go-web
 ```
 
 Pass custom configuration parameters via env vars:
 
 ```sh
-DICT_DIR="~/path/to/custom/dictionaries" SERVER_PORT=8888 ./mdict-server
+DICT_DIR="~/path/to/custom/dictionaries" SERVER_PORT=8888 ./mdict-go-web
 ```
 
 Open in browser:
@@ -46,11 +46,11 @@ Open in browser:
 ## Help
 
 ```sh
-mdict-server --help                               
-mdict-server — MDict (.mdx/.mdd) HTTP dictionary server
+mdict-go-web --help                               
+mdict-go-web — MDict (.mdx/.mdd) HTTP dictionary server
 
 USAGE
-  mdict-server [flags]
+  mdict-go-web [flags]
 
 FLAGS
   --config       <path>   Path to config.toml (overrides auto-detect)
@@ -105,8 +105,8 @@ EXAMPLE config.toml
   NO_BROWSER            = "1"
 
 EXAMPLES
-  mdict-server
-  mdict-server --dict-dir ~/Books/Dicts --port 9090 --no-browser
-  mdict-server --config /etc/mdict/config.toml --default-dict "en/Oxford.mdx"
-  SERVER_PORT=9000 mdict-server
+  mdict-go-web
+  mdict-go-web --dict-dir ~/Books/Dicts --port 9090 --no-browser
+  mdict-go-web --config /etc/mdict/config.toml --default-dict "en/Oxford.mdx"
+  SERVER_PORT=9000 mdict-go-web
 ```

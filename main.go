@@ -209,10 +209,10 @@ func main() {
 // usageFn returns the --help handler with full env/toml cross-reference.
 func usageFn(_ *flag.FlagSet) func() {
 	return func() {
-		fmt.Fprint(os.Stderr, `mdict-server — MDict (.mdx/.mdd) HTTP dictionary server
+		fmt.Fprint(os.Stderr, `mdict-go-web — MDict (.mdx/.mdd) HTTP dictionary server
 
 USAGE
-  mdict-server [flags]
+  mdict-go-web [flags]
 
 FLAGS
   --config       <path>   Path to config.toml (overrides auto-detect)
@@ -267,10 +267,10 @@ EXAMPLE config.toml
   NO_BROWSER            = "1"
 
 EXAMPLES
-  mdict-server
-  mdict-server --dict-dir ~/Books/Dicts --port 9090 --no-browser
-  mdict-server --config /etc/mdict/config.toml --default-dict "en/Oxford.mdx"
-  SERVER_PORT=9000 mdict-server
+  mdict-go-web
+  mdict-go-web --dict-dir ~/Books/Dicts --port 9090 --no-browser
+  mdict-go-web --config /etc/mdict/config.toml --default-dict "en/Oxford.mdx"
+  SERVER_PORT=9000 mdict-go-web
 `)
 	}
 }
