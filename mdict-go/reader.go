@@ -46,7 +46,7 @@ var (
 const audioOnclick = "new Audio(this.href).play(); return false;"
 
 // speexdec binary used to transcode Speex (.spx) audio to browser-playable WAV.
-var speexdec = getConf("SPEEXDEC", "/usr/local/bin/speexdec")
+var speexdec = getConf("SPEEXDEC", "/usr/bin/speexdec")
 
 // mddFile pairs an opened .mdd resource dictionary with its key entries.
 type mddFile struct {
