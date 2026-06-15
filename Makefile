@@ -1,4 +1,4 @@
-.PHONY: run go-build
+.PHONY: run go-build clean
 
 DICT_DIR := ~/Dictionaries
 MDICT_TEMP_ASSETS_DIR := ~/.mdict/res
@@ -16,3 +16,5 @@ $(MDICT_TEMP_ASSETS_DIR):
 go-build:
 	go build -o mdict-server .
 
+clean:
+	go clean -modcache
