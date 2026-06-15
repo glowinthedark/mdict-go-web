@@ -1,4 +1,8 @@
 # MDict go web dictionary
+Fast, zero-dependency MDict dictionary that runs in your browser (all-in-one-client-server).
+
+## Download
+Get the version for your OS from [**releases**](https://github.com/glowinthedark/mdict-go-web/releases) - save the binary; `chmod +x mdict-server` and then run it in the terminal. For help use `mdict-server -h`.
 
 ## Configuration
 Configuration parameters can be set in `config.toml` or via env vars (which take prescedemce over `config.toml`); if neither are set then default values are used.
