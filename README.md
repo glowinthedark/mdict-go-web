@@ -38,3 +38,71 @@ DICT_DIR="~/path/to/custom/dictionaries" SERVER_PORT=8888 ./mdict-go/mdict-serve
 Open in browser:
 
 - http://localhost:8808
+
+## Help
+
+```sh
+mdict-server --help                               
+mdict-server — MDict (.mdx/.mdd) HTTP dictionary server
+
+USAGE
+  mdict-server [flags]
+
+FLAGS
+  --config       <path>   Path to config.toml (overrides auto-detect)
+                          env: CONFIG_PATH
+
+  --dict-dir     <path>   Directory with .mdx/.mdd dictionary files
+                          env: DICT_DIR              toml: DICT_DIR
+                          default: ~/Dictionaries
+
+  --asset-dir    <path>   Cache dir for extracted .mdd resources
+                          env: MDICT_TEMP_ASSETS_DIR  toml: MDICT_TEMP_ASSETS_DIR
+                          default: ~/.mdict/res
+
+  --default-dict <rel>    Default dictionary, relative to dict-dir
+                          e.g. "en/Oxford.mdx"
+                          env: DEFAULT_DICT           toml: DEFAULT_DICT
+
+  --ip           <addr>   Listen IP address
+                          env: SERVER_IP              toml: SERVER_IP
+                          default: 127.0.0.1
+
+  --port         <port>   Listen port
+                          env: SERVER_PORT            toml: SERVER_PORT
+                          default: 8808
+
+  --speexdec     <path>   Path to speexdec binary (Speex audio decoding)
+                          env: SPEEXDEC               toml: SPEEXDEC
+                          default: /usr/local/bin/speexdec
+
+  --no-browser            Do not open a browser tab on startup
+                          env/toml: NO_BROWSER=1
+
+  -h, --help              Show this help and exit
+
+CONFIG FILE SEARCH ORDER
+  1. --config flag / CONFIG_PATH env var
+  2. <executable-dir>/config.toml
+  3. ~/.mdict/config.toml
+  4. /etc/mdict/config.toml
+  5. ./config.toml
+
+PRIORITY (highest → lowest)
+  CLI flag  >  environment variable  >  config.toml  >  built-in default
+
+EXAMPLE config.toml
+  DICT_DIR              = "/data/dicts"
+  MDICT_TEMP_ASSETS_DIR = "/tmp/mdict-res"
+  DEFAULT_DICT          = "en/Oxford.mdx"
+  SERVER_IP             = "0.0.0.0"
+  SERVER_PORT           = "9000"
+  SPEEXDEC              = "/usr/bin/speexdec"
+  NO_BROWSER            = "1"
+
+EXAMPLES
+  mdict-server
+  mdict-server --dict-dir ~/Books/Dicts --port 9090 --no-browser
+  mdict-server --config /etc/mdict/config.toml --default-dict "en/Oxford.mdx"
+  SERVER_PORT=9000 mdict-server
+```
