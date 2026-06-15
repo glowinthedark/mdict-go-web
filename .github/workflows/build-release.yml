@@ -16,11 +16,43 @@ permissions:
 
 jobs:
   build:
-    name: Build for ${{ matrix.target }}
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        target: [linux-amd64, windows-amd64, darwin-amd64, darwin-arm64]
+        include:
+          # ── Linux ──────────────────────────────────────────────
+          - { goos: linux,   goarch: amd64  }
+          - { goos: linux,   goarch: arm64  }
+          - { goos: linux,   goarch: arm,    goarm: "7" }
+          - { goos: linux,   goarch: arm,    goarm: "6" }
+          - { goos: linux,   goarch: 386    }
+          # - { goos: linux,   goarch: riscv64 }
+          # - { goos: linux,   goarch: mips64le }
+          # - { goos: linux,   goarch: ppc64le }
+          # - { goos: linux,   goarch: s390x  }
+          # ── Windows ────────────────────────────────────────────
+          - { goos: windows, goarch: amd64,  ext: ".exe" }
+          - { goos: windows, goarch: arm64,  ext: ".exe" }
+          - { goos: windows, goarch: 386,    ext: ".exe" }
+          # ── macOS ──────────────────────────────────────────────
+          - { goos: darwin,  goarch: amd64  }
+          - { goos: darwin,  goarch: arm64  }
+          # ── FreeBSD ────────────────────────────────────────────
+          - { goos: freebsd, goarch: amd64  }
+          - { goos: freebsd, goarch: arm64  }
+          - { goos: freebsd, goarch: 386    }
+          # ── OpenBSD ────────────────────────────────────────────
+          # - { goos: openbsd, goarch: amd64  }
+          # - { goos: openbsd, goarch: arm64  }
+          # ── NetBSD ─────────────────────────────────────────────
+          # - { goos: netbsd,  goarch: amd64  }
+          # - { goos: netbsd,  goarch: arm64  }
+          # ── Plan 9 (optional, uncomment if needed) ─────────────
+          # - { goos: plan9,   goarch: amd64  }
+          # - { goos: plan9,   goarch: arm    }
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -28,34 +60,28 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.23"
 
       - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
         run: |
-          # Extract OS and ARCH from target
-          OS=$(echo ${{ matrix.target }} | cut -d '-' -f 1)
-          ARCH=$(echo ${{ matrix.target }} | cut -d '-' -f 2)
-
-          # Set extension for Windows
-          EXT=""
-          if [ "$OS" = "windows" ]; then
-            EXT=".exe"
-          fi
-
-          # Build the binary
+          SUFFIX="${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
+          BINARY="mdict-server-${SUFFIX}${{ matrix.ext }}"
           cd mdict-go
-          GOOS=$OS GOARCH=$ARCH go build -o ../mdict-server-${{ matrix.target }}$EXT .
-          cd ..
+          go build -trimpath -ldflags="-s -w" -o "../${BINARY}" .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mdict-server-${{ matrix.target }}
-          path: mdict-server-${{ matrix.target }}*
+          name: mdict-server-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
+          path: mdict-server-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}${{ matrix.ext }}
 
   release:
     needs: build
-    if: always() && inputs.tag != ''
+    if: ${{ inputs.tag != '' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,26 +91,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # must fetch full history so a new tag can be created if it does not exist
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v7
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
+          merge-multiple: true
 
-      - name: List downloaded files
-        run: |
-          find artifacts -type f -name "mdict-server-*" | sort
+      - name: List artifacts
+        run: find artifacts -type f | sort
 
-
-      - name: Create git tag if it does not exist
+      - name: Create git tag if missing
         run: |
           if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}"; then
-            echo "Tag ${TAG} already exists — skipping tag creation."
+            echo "Tag ${TAG} already exists — skipping."
           else
-            echo "Tag ${TAG} does not exist — creating it from HEAD."
             git config user.name  "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git tag -a "${TAG}" -m "Release ${TAG}"
@@ -93,35 +116,13 @@ jobs:
           fi
 
       - name: Create or update GitHub release
-        # gh release create  → used when no release exists yet for this tag.
-        #   • Automatically uses the tag that was pushed (or the existing one).
-        #   • --generate-notes asks GitHub to auto-fill the release notes from
-        #     commits since the previous release.
-        #
-        # gh release upload --clobber  → used when a release already exists.
-        #   • --clobber deletes any asset with the same filename before
-        #     re-uploading, giving us idempotent replace semantics.
-        #   • WARNING: gh documents that if the upload fails after --clobber,
-        #     the original asset is gone. Acceptable here because we always
-        #     have the artifact zip as a fallback.
         run: |
           if gh release view "${TAG}" > /dev/null 2>&1; then
-            echo "Release for ${TAG} already exists — replacing assets."
-            gh release upload "${TAG}" artifacts/*/* --clobber
+            echo "Release ${TAG} exists — replacing assets."
+            gh release upload "${TAG}" artifacts/* --clobber
           else
-            echo "No release for ${TAG} yet — creating release and uploading assets."
-            gh release create "${TAG}" artifacts/*/* \
-              --title "${TAG}" \
+            echo "Creating release ${TAG}."
+            gh release create "${TAG}" artifacts/* \
+              --title "${{ inputs.release_name }} ${TAG}" \
               --generate-notes
           fi
-
-
-      # - name: Create Release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     tag_name: ${{ github.event.inputs.tag }}
-      #     name: ${{ github.event.inputs.release_name }} ${{ github.event.inputs.tag }}
-      #     draft: false
-      #     prerelease: false
-      #     files: |
-      #       artifacts/*/*
