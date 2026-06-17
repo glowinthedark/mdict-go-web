@@ -31,12 +31,15 @@ Run pre-compiled dictionary server:
 
 ```sh
 ./mdict-go-web
+
+# OR run with custom configs in the Makefile
+make run
 ```
 
-Pass custom configuration parameters via env vars:
+With custom configuration parameters:
 
 ```sh
-DICT_DIR="~/path/to/custom/dictionaries" SERVER_PORT=8888 ./mdict-go-web
+./mdict-go-web --dict-dir "~/path/to/custom/dictionaries" --ip 0.0.0.0 --port 8888
 ```
 
 Open in browser:
@@ -46,8 +49,8 @@ Open in browser:
 ## Help
 
 ```sh
-mdict-go-web --help                               
-mdict-go-web — MDict (.mdx/.mdd) HTTP dictionary server
+# mdict-go-web --help                               
+MDict (.mdx/.mdd) HTTP dictionary server
 
 USAGE
   mdict-go-web [flags]
@@ -78,7 +81,7 @@ FLAGS
 
   --speexdec     <path>   Path to speexdec binary (Speex audio decoding)
                           env: SPEEXDEC               toml: SPEEXDEC
-                          default: /usr/local/bin/speexdec
+                          default: /usr/bin/speexdec
 
   --no-browser            Do not open a browser tab on startup
                           env/toml: NO_BROWSER=1
@@ -105,8 +108,7 @@ EXAMPLE config.toml
   NO_BROWSER            = "1"
 
 EXAMPLES
-  mdict-go-web
   mdict-go-web --dict-dir ~/Books/Dicts --port 9090 --no-browser
-  mdict-go-web --config /etc/mdict/config.toml --default-dict "en/Oxford.mdx"
+  mdict-go-web --config /etc/mdict/config.toml --default-dict "OALD9.mdx"
   SERVER_PORT=9000 mdict-go-web
 ```

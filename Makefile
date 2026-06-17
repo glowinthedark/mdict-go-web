@@ -1,21 +1,33 @@
-.PHONY: run go-build clean
+.PHONY: build run clean clean-go-global-module-cache
 
-DICT_DIR := ~/Dictionaries
-MDICT_TEMP_ASSETS_DIR := ~/.mdict/res
+DICT_DIR := $(HOME)/Dictionaries
+MDICT_TEMP_ASSETS_DIR := $(HOME)/.mdict/res
+SERVER_IP := 0.0.0.0
+SERVER_PORT := 8808
+SPEEXDEC := $(shell which speexdec 2>/dev/null)
+DEFAULT_DICT := ldoce6.mdx
 
-run: $(MDICT_TEMP_ASSETS_DIR) $(DICT_DIR) go-build
-	./mdict-go-web
-# 	DICT_DIR=$(DICT_DIR) MDICT_TEMP_ASSETS_DIR=$(MDICT_TEMP_ASSETS_DIR) ./mdict-go-web
+build: mdict-go-web
 
-$(DICT_DIR):
-	mkdir -p $(DICT_DIR)
-
-$(MDICT_TEMP_ASSETS_DIR):
-	mkdir -p $(MDICT_TEMP_ASSETS_DIR)
-
-go-build:
+mdict-go-web:
 	go build -o mdict-go-web .
 
+run: $(MDICT_TEMP_ASSETS_DIR) $(DICT_DIR) build
+	./mdict-go-web \
+	    --dict-dir $(DICT_DIR) \
+	    --asset-dir $(MDICT_TEMP_ASSETS_DIR) \
+	    --default-dict $(DEFAULT_DICT) 
+	    --ip $(SERVER_IP) 
+	    --port $(SERVER_PORT)
+
+$(DICT_DIR):
+	mkdir -p $@
+
+$(MDICT_TEMP_ASSETS_DIR):
+	mkdir -p $@
+
 clean:
+	rm -f mdict-go-web
+
+clean-go-global-module-cache:
 	go clean -modcache
-	rm mdict-go-web
