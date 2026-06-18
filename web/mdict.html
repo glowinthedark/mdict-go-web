@@ -248,6 +248,23 @@
             padding: 0 .1em;
         }
 
+        /* ── forced dark for dictionary content ──
+           MDX entries hard-code light colors, so in dark mode we flip the whole
+           .content block (invert + hue-rotate, Dark-Reader style) and flip media
+           back. brightness/contrast are eased so we land on near-black / soft-white
+           instead of pure #000/#fff (avoids halation), and images get dimmed — per
+           dark-mode color guidance. Rough, but the dict's own hue-coding survives.
+           Add data-noinvert to opt an element out. */
+        html[data-theme="dark"] .content {
+            background: #fafafa;
+            color: #1a1a1a;
+            filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9);
+        }
+
+        html[data-theme="dark"] .content :is(img, picture, video, svg, canvas, iframe, embed, object, mark, [data-noinvert]) {
+            filter: invert(1) hue-rotate(180deg);
+        }
+
         @media (max-width:560px) {
             .wrap {
                 padding: var(--sp) var(--sp-sm);

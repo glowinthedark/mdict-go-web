@@ -54,7 +54,7 @@ var markJS []byte
 const appVersion = "0.53"
 
 const (
-	maxItemsDefault        = 42
+	maxItemsDefault        = 53
 	configFileName         = "config.toml"
 	dictNamePlaceholder    = "$$${{{DICT_NAME}}}"
 	dictOptionsPlaceholder = "$$${{{DICT_OPTIONS}}}"

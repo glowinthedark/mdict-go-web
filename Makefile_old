@@ -1,0 +1,17 @@
+.PHONY: run go-build
+
+DICT_DIR := ~/Downloads/Language/mdict
+MDICT_TEMP_ASSETS_DIR := /var/mdict/res
+
+run: $(MDICT_TEMP_ASSETS_DIR) $(DICT_DIR) go-build
+	DICT_DIR=$(DICT_DIR) MDICT_TEMP_ASSETS_DIR=$(MDICT_TEMP_ASSETS_DIR) ./mdict-go-web
+
+$(DICT_DIR):
+	mkdir -p $(DICT_DIR)
+
+$(MDICT_TEMP_ASSETS_DIR):
+	mkdir -p $(MDICT_TEMP_ASSETS_DIR)
+
+go-build:
+	cd go build -o mdict-go-web .
+
