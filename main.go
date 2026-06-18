@@ -28,6 +28,7 @@ import (
 	_ "embed"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"log"
@@ -50,14 +51,14 @@ var templateHTML string
 //go:embed web/mark.min.js
 var markJS []byte
 
-const appVersion = "0.5"
+const appVersion = "0.53"
 
 const (
 	maxItemsDefault        = 42
 	configFileName         = "config.toml"
 	dictNamePlaceholder    = "$$${{{DICT_NAME}}}"
 	dictOptionsPlaceholder = "$$${{{DICT_OPTIONS}}}"
-	dictHeadPlaceholder    = "$$${{{DICT_HEAD}}}"
+	dictBodyPlaceholder    = "$$${{{DICT_BODY}}}"
 )
 
 // Configs
@@ -347,47 +348,64 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 		absPathIn = defaultDict
 	}
 
-	html := templateHTML
 	var reader *Reader
 	if isFile(absPathIn) {
-		rd, err := getReader(absPathIn)
-		if err != nil {
+		if rd, err := getReader(absPathIn); err != nil {
 			fmt.Fprintf(os.Stderr, "open dictionary %s: %v\n", absPathIn, err)
-			html = strings.ReplaceAll(html, dictNamePlaceholder, "")
 		} else {
 			reader = rd
-			html = strings.ReplaceAll(html, dictNamePlaceholder, rd.name)
 		}
-	} else {
-		html = strings.ReplaceAll(html, dictNamePlaceholder, "")
 	}
-	html = strings.ReplaceAll(html, dictOptionsPlaceholder, buildOptions(absPathIn))
 
-	// Build the body and the hoisted head assets before writing, so per-entry
-	// <link>/<script> tags can be lifted into <head> once instead of repeating
-	// in the body for every entry.
-	var body, head string
+	// relPath: dictDir-relative path for the current dictionary, used by keyword links.
+	relPath := absPathIn
 	if reader != nil {
-		if q != "" {
-			defs := reader.search(q, maxN)
-			for _, defi := range defs {
-				reader.extractAssets(defi) // run on originals, before tags are stripped
-			}
-			var cleaned []string
-			cleaned, head = hoistHeadAssets(defs)
-			body = strings.Join(cleaned, "\n")
-			if body != "" {
-				body += "\n"
-			}
-		} else {
-			body = "<pre>\n" + strings.Join(reader.keywords(maxN), "\n") + "\n</pre>\n"
+		if rp, err := filepath.Rel(dictDir, absPathIn); err == nil {
+			relPath = filepath.ToSlash(rp)
 		}
 	}
 
-	html = strings.ReplaceAll(html, dictHeadPlaceholder, head)
-	io.WriteString(w, html+"\n")
-	io.WriteString(w, body)
-	io.WriteString(w, "</div>\n</div>\n</body>\n</html>\n")
+	name := ""
+	if reader != nil {
+		name = reader.name
+	}
+
+	page := templateHTML
+	page = strings.ReplaceAll(page, dictNamePlaceholder, html.EscapeString(name))
+	page = strings.ReplaceAll(page, dictOptionsPlaceholder, buildOptions(absPathIn))
+	page = strings.ReplaceAll(page, dictBodyPlaceholder, renderBody(reader, q, maxN, relPath))
+	io.WriteString(w, page)
+}
+
+// renderBody produces the main-column content: a keyword list (no query), an
+// empty/no-match note, or the matched definitions rendered directly into the page
+// (single DOM). The dict's own css/js is intentionally allowed to apply — server
+// -rendered <script> tags execute, so interactive content (collapsibles) works
+// and the theme cascade reaches the definitions. The per-dict <link>/<script src>
+// tags are still deduped so they don't repeat once per entry.
+func renderBody(reader *Reader, q string, maxN int, relPath string) string {
+	if reader == nil {
+		return `<p class="empty">Select a dictionary to begin.</p>`
+	}
+	if q == "" {
+		var b strings.Builder
+		b.WriteString(`<ul class="keywords">`)
+		for _, k := range reader.keywords(maxN) {
+			fmt.Fprintf(&b, `<li><a href="?path=%s&amp;q=%s">%s</a></li>`,
+				pyQuote(relPath), pyQuote(k), html.EscapeString(k))
+		}
+		b.WriteString(`</ul>`)
+		return b.String()
+	}
+	defs := reader.search(q, maxN)
+	for _, defi := range defs {
+		reader.extractAssets(defi) // run on originals, before tags are stripped
+	}
+	cleaned, head := hoistHeadAssets(defs)
+	if len(cleaned) == 0 {
+		return `<p class="empty">No matches for “` + html.EscapeString(q) + `”.</p>`
+	}
+	return head + `<div class="content">` + strings.Join(cleaned, "\n") + `</div>`
 }
 
 // buildOptions renders <option> elements for every .mdx under dictDir,

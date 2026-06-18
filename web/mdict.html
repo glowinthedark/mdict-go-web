@@ -1,333 +1,369 @@
-
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>$$${{{DICT_NAME}}}</title>
+
+    <!-- set theme before first paint: no flash of the wrong theme -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('mdict.theme') ||
+                    (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                document.documentElement.dataset.theme = t;
+            } catch (e) { }
+        })();
+    </script>
+
     <style>
+        /* ── design tokens (φ = 1.618 drives the type scale & spacing rhythm) ── */
+        :root {
+            --t-sm: .786rem;
+            --t-base: 1rem;
+            --t-md: 1.272rem;
+            --t-lg: 1.618rem;
+
+            --sp-xs: .382rem;
+            --sp-sm: .618rem;
+            --sp: 1rem;
+            --sp-md: 1.618rem;
+            --sp-lg: 2.618rem;
+
+            --measure: 66ch;
+            --radius: .5rem;
+
+            --bg: #f6f5f2;
+            --surface: #fffefb;
+            --paper: #fdfcf9;
+            --fg: #23211d;
+            --muted: #8b857c;
+            --border: #e6e1d9;
+            --accent: #b3541e;
+            --accent-fg: #fff;
+            --shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 6px 20px rgba(0, 0, 0, .05);
+        }
+
+        html[data-theme="dark"] {
+            --bg: #15171b;
+            --surface: #1c1f24;
+            --paper: #fdfcf9;
+            /* content card stays light paper, by design */
+            --fg: #e8e5df;
+            --muted: #969ca5;
+            --border: #2a2e35;
+            --accent: #e08a5d;
+            --accent-fg: #15171b;
+            --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 28px rgba(0, 0, 0, .35);
+        }
+
         * {
-            font-family: Georgia, Serif;
-            line-height: 160%;
+            box-sizing: border-box;
         }
 
-        .p_sticky {
-            font-family: pt sans narrow, arial narrow;
-            font-size: 5pt;
-            color: #aaa;
-            background: white;
-            position: -webkit-sticky;
-            /* Safari */
-            position: sticky;
-            top: 0;
-            right: 0;
-            margin: 0;
-            text-align: right;
-            padding: 0;
-            z-order: 9999;
-        }
-
-        pre {
-            font-family: Fira Mono, Jetbrains Sans Mono, monospace;
-            font-size: 7pt;
-        }
-
-        h1 {
-            color: #999;
-            text-align: center;
-        }
-
-        pre {
-            font-size: 12pt;
-        }
-
-        .hl {
-            background-color: greenyellow;
-            border: 1px dotted #0ec40e;
-        }
-
-        div>div#navLateral, article>header.c-page-header {position:relative;}
-
-        #main {
-            margin: 0 auto;
-            width: 83%;
-            max-width: 900px;
-            text-align: left;
-            padding: 10px 20px;
-            background: #fbfbfb;
-            border: 1px dotted #fbfbfb;
-        }
-
-        a,
-        a:link,
-        a:visited {
-            cursor: pointer;
-            color: rgb(158, 176, 187);
-            color: darkblue;
-            text-decoration: none !important;
-            -webkit-transition: color 1s ease, background-color 1s ease;
-            -moz-transition: color 1s ease, background-color 1s ease;
-            -o-transition: color 1s ease, background-color 1s ease;
-            transition: color 1s ease, background-color 1s ease;
-        }
-
-        a:hover {
-            color: darkred;
-            background-color: yellow;
-            background-color2: #daffcf;
+        /* backstop for the overscroll area; a dict rarely targets <html> */
+        html {
+            background: var(--bg);
         }
 
         body {
-            padding: 1em 4em;
-            text-align: center;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.618;
+            -webkit-text-size-adjust: 100%;
         }
 
-        dl,
-        dd,
-        dt {
-            text-align: left;
+        /* the app wrapper owns the visible theme surface (not <body>), so a dict's
+           generic `body {…}` rule can't whitewash dark mode */
+        .app {
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--fg);
         }
 
-        label {
-            font-size: smaller;
-            color: #999;
+        /* ── sticky top bar ── */
+        .bar {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            padding: var(--sp-sm) var(--sp);
+            background: color-mix(in srgb, var(--surface) 90%, transparent);
+            -webkit-backdrop-filter: saturate(180%) blur(10px);
+            backdrop-filter: saturate(180%) blur(10px);
+            border-bottom: 1px solid var(--border);
+            transition: transform .25s ease;
         }
 
-        * {
-            font-family: ".AppleSystemUIFont", Helvetica, Arial, sans-serif;
-            line-height: 1.6;
+        .bar.is-hidden {
+            transform: translateY(-100%);
         }
 
-        .ipa {
-            font-family: Symbol;
-            font-size: 13pt;
-        }
-
-        select {
-            border: none;
-			max-width: 15em;
-        }
-
-        .container {
+        .bar form {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-sm);
+            max-width: var(--measure);
             margin: 0 auto;
-            width: 83%;
-            max-width: 650px;
-            text-align: left;
-            padding: 0 10px 20px;
         }
 
-        /*
-	  input[type=submit] {
-		border: 1px dotted lightgray;
-		margin: 1em;
-		padding: 0.4em;
-		-webkit-border-radius: 4px;
-		-moz-border-radius: 4px;
-		border-radius: 4px;
-	  }
-	  */
-
-        .btn {
-            border: 0;
-            margin: .5em 1em;
-            padding: 0.1em 0.4em;
-            background-image: -webkit-linear-gradient(top, #e2e1e1, #cfcfcf);
-            background-image: -moz-linear-gradient(top, #e2e1e1, #cfcfcf);
-            background-image: -ms-linear-gradient(top, #e2e1e1, #cfcfcf);
-            background-image: -o-linear-gradient(top, #e2e1e1, #cfcfcf);
-            background-image: linear-gradient(to bottom, #e2e1e1, #cfcfcf);
-            -webkit-border-radius: 4px;
-            -moz-border-radius: 4px;
-            border-radius: 4px;
-            -webkit-box-shadow: 2px 2px 1px #cecece;
-            -moz-box-shadow: 2px 2px 1px #cecece;
-            box-shadow: 2px 2px 1px #cecece;
-            color: #ffffff;
-            font-size: 20px;
-            background: #e2e1e1;
-            text-decoration: none;
+        .q {
+            flex: 1 1 auto;
+            min-width: 0;
+            font-size: var(--t-md);
+            color: var(--fg);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: var(--sp-xs) var(--sp-sm);
         }
 
-        .btn:hover {
-            background: #f3f3f3;
-            background-image: -webkit-linear-gradient(top, #f3f3f3, #e2e1e1);
-            background-image: -moz-linear-gradient(top, #f3f3f3, #e2e1e1);
-            background-image: -ms-linear-gradient(top, #f3f3f3, #e2e1e1);
-            background-image: -o-linear-gradient(top, #f3f3f3, #e2e1e1);
-            background-image: linear-gradient(to bottom, #f3f3f3, #e2e1e1);
-            text-decoration: none;
+        .q:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+            border-color: transparent;
         }
 
-        input[type=text] {
-            -webkit-box-shadow: rgba(29, 36, 23, 0.386719) -2px 3px 4px 0px;
-            -moz-box-shadow: rgba(29, 36, 23, 0.386719) -2px 3px 4px 0px;
-            box-shadow: rgba(29, 36, 23, 0.386719) -2px 3px 4px 0px;
-            -webkit-border-radius: 4px;
-            -moz-border-radius: 4px;
-            border-radius: 4px;
-            border: 0;
-            margin: 0 1em;
-            padding: 0.1em 0.4em;
-            font-size: 20px;
+        .sel {
+            flex: 0 1 auto;
+            max-width: 12em;
+            font-size: var(--t-sm);
+            color: var(--muted);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: var(--sp-xs) var(--sp-sm);
         }
 
-        input[type=text] {
-            background-color: rgb(250, 250, 250);
-        }
-
-        .src li {
-            font-size: 9pt;
-        }
-
-        dt {
-            font-size: 150%;
-            font-weight: bold;
-            color: #ff9001;
-        }
-
-        hr {
-            border: 1px dotted lightgray;
-        }
-
-        .part {
-            display: block;
-            border-left: 7px solid rgb(233, 233, 233);
-            margin: 1em 0;
-            padding: .5em 1.5em;
-            background-color: #f7f5f5;
-        }
-
-        a,
-        a:link,
-        a:visited {
+        .iconbtn {
+            flex: 0 0 auto;
+            display: grid;
+            place-items: center;
+            width: 2.4em;
+            height: 2.4em;
+            padding: 0;
+            color: var(--muted);
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: var(--radius);
             cursor: pointer;
-            color: rgb(158, 176, 187);
-            text-decoration: none !important;
-            -webkit-transition: color 1s ease, background-color 1s ease;
-            -moz-transition: color 1s ease, background-color 1s ease;
-            -o-transition: color 1s ease, background-color 1s ease;
-            transition: color 1s ease, background-color 1s ease;
         }
 
-        a:hover {
-            color: #86b692;
-            background-color: #daffcf;
+        .iconbtn:hover {
+            color: var(--accent);
+            background: var(--bg);
         }
 
-        .example {
-            list-style-type: "\1F4A1";
-            padding-left: .7em;
+        .iconbtn svg {
+            width: 1.2em;
+            height: 1.2em;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
-        .syn li {
-            list-style-type: "\223C";
-            padding-left: .7em;
+        .go {
+            color: var(--accent-fg);
+            background: var(--accent);
+            border-color: var(--accent);
         }
 
-        .ant li {
-            list-style-type: "\2260";
-            padding-left: .7em;
+        .go:hover {
+            color: var(--accent-fg);
+            background: var(--accent);
+            filter: brightness(1.06);
         }
 
-        @media screen and (max-width:600px) {
-            body {
-                padding: 0;
-                margin: 0
+        /* sun shows in dark (→go light), moon shows in light (→go dark) */
+        .i-sun {
+            display: none;
+        }
+
+        html[data-theme="dark"] .i-sun {
+            display: block;
+        }
+
+        html[data-theme="dark"] .i-moon {
+            display: none;
+        }
+
+        /* ── main column ── */
+        .wrap {
+            max-width: var(--measure);
+            margin: 0 auto;
+            padding: var(--sp-md) var(--sp);
+        }
+
+        .dict-name {
+            margin: 0 0 var(--sp);
+            text-align: right;
+            font-size: var(--t-sm);
+            color: var(--muted);
+        }
+
+        .empty {
+            margin-top: var(--sp-lg);
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .keywords {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            columns: 16ch auto;
+            column-gap: var(--sp-md);
+        }
+
+        .keywords a {
+            display: block;
+            padding: var(--sp-xs) 0;
+            color: var(--fg);
+            text-decoration: none;
+            font-size: var(--t-sm);
+        }
+
+        .keywords a:hover {
+            color: var(--accent);
+        }
+
+        /* dictionary content (single DOM: the dict's own css/js applies on purpose,
+           and the light/dark theme cascade reaches it) */
+        .content {
+            color: var(--fg);
+        }
+
+        .content img,
+        .content video {
+            max-width: 100%;
+            height: auto;
+        }
+
+        mark {
+            background: #ffe6a3;
+            color: #3a2c00;
+            border-radius: 2px;
+            padding: 0 .1em;
+        }
+
+        @media (max-width:560px) {
+            .wrap {
+                padding: var(--sp) var(--sp-sm);
             }
 
-            .container {
-                margin: 0;
-                width: auto;
-                text-align: left;
-                padding: .7em;
+            .sel {
+                max-width: 7.5em;
             }
-        }
-
-        .hl {
-            background-color: greenyellow;
-            border: 1px dashed darkgreen;
         }
     </style>
-<!--    SEE: https://markjs.io-->
-<!--    SEE: https://cdnjs.com/libraries/mark.js-->
-<!--    SEE: https://www.jsdelivr.com/package/npm/mark.js-->
-<!--    <script src="https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/mark.min.js" integrity="sha512-5CYOlHXGh6QpOFA/TeTylKLWfB3ftPsde7AnmhuitiTX4K5SqCLBeKro6sPS8ilsz1Q4NRx3v8Ko2IBiszzdww==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>-->
-    <script src="mark.min.js"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script type="text/javascript">
-		function isMixedCase(s) {
-			const lower = s.toLowerCase();
-			const upper = s.toUpperCase();
-			return s !== lower && s !== upper;
-		}
-
-		function normalizeCase(s) {
-			return isMixedCase(s) && s.toLowerCase() || s;
-		}
-        document.addEventListener("readystatechange", event => {
-            if (event.target.readyState === "complete") {
-                const form = window.document.forms.frm;
-
-                var params = new URLSearchParams(document.location.search);
-
-                const path = params.get("path");
-                if (path) {
-                    form.path.value = path;
-                    localStorage.setItem('mdict.lastPath', path);
-                } else {
-                    // remember last selected dictionary across visits
-                    var saved = localStorage.getItem('mdict.lastPath');
-                    if (saved && [...form.path.options].some(o => o.value === saved)) {
-                        form.path.value = saved;
-                    }
-                }
-                form.path.addEventListener('change', function () {
-                    localStorage.setItem('mdict.lastPath', form.path.value);
-                });
-                var term = params.get('q');
-
-                if (term) {
-                    form.q.value = term;
-                    colorize(term);
-                }
-
-                var content = document.querySelector('.content');
-
-                content.addEventListener('dblclick', function (e) {
-                    var selectedWord = document.getSelection().toString().trim();
-
-                    if (selectedWord) {
-						form.q.value = normalizeCase(selectedWord);
-						form.submit();
-                    }
-                });
-
-            }
-        });
-
-        function colorize(term) {
-            var instance = new Mark(document.getElementById("main"));
-            var rx = new RegExp(term, "gi");
-            instance.markRegExp(rx, {
-                "element": "span",
-                "className": "hl"
-            });
-        }
-    </script>
-$$${{{DICT_HEAD}}}
 </head>
 
 <body>
-    <div id="main" class="container">
-        <form name="frm" action="#">
-            <input type="text" name="q" id="q" value="" autofocus>
-            <input type="submit" id="search" class="btn" value="🔎 ">
-            <label for="dict">&#x1F4D6;</label>
-            <select name="path" id="path">
-                $$${{{DICT_OPTIONS}}}
-            </select>
+    <div class="app">
+    <header class="bar" id="bar">
+        <form action="/" method="get" name="frm" role="search">
+            <input class="q" id="q" name="q" type="search" placeholder="Search…" autocomplete="off"
+                autocapitalize="off" autocorrect="off" spellcheck="false" autofocus>
+            <select class="sel" id="path" name="path" title="Dictionary">$$${{{DICT_OPTIONS}}}</select>
+            <button class="iconbtn go" type="submit" title="Search" aria-label="Search">
+                <svg viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.5" y2="16.5" />
+                </svg>
+            </button>
+            <button class="iconbtn" type="button" id="theme" title="Toggle light / dark" aria-label="Toggle theme">
+                <svg class="i-sun" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19" />
+                </svg>
+                <svg class="i-moon" viewBox="0 0 24 24">
+                    <path d="M21 12.8A8 8 0 1 1 11.2 3 6 6 0 0 0 21 12.8z" />
+                </svg>
+            </button>
         </form>
-<p class=p_sticky>$$${{{DICT_NAME}}}</p>
-<div class='content'>
+    </header>
 
+    <main class="wrap">
+        <p class="dict-name">$$${{{DICT_NAME}}}</p>
+        $$${{{DICT_BODY}}}
+    </main>
+    </div>
+
+    <script src="mark.min.js"></script>
+    <script>
+        (function () {
+            'use strict';
+
+            // 'autohide' = retract on scroll-down, reveal on scroll-up; 'pinned' = always visible.
+            var SEARCHBAR_MODE = 'autohide';
+
+            var form = document.forms.frm;
+            var params = new URLSearchParams(location.search);
+            var q = params.get('q');
+            var path = params.get('path');
+
+            // ── restore controls from URL / localStorage ──
+            if (q) form.q.value = q;
+            if (path) {
+                form.path.value = path;
+                try { localStorage.setItem('mdict.lastPath', path); } catch (e) { }
+            } else {
+                try {
+                    var last = localStorage.getItem('mdict.lastPath');
+                    if (last && [].some.call(form.path.options, function (o) { return o.value === last; })) {
+                        form.path.value = last;
+                    }
+                } catch (e) { }
+            }
+            form.path.addEventListener('change', function () {
+                try { localStorage.setItem('mdict.lastPath', form.path.value); } catch (e) { }
+                form.submit(); // switching dictionary loads it immediately
+            });
+
+            // ── theme toggle (instant, persisted) ──
+            document.getElementById('theme').addEventListener('click', function () {
+                var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+                document.documentElement.dataset.theme = next;
+                try { localStorage.setItem('mdict.theme', next); } catch (e) { }
+            });
+
+            // ── results: double-click to look up + highlight the query term ──
+            // content renders in the single DOM, so the dict's own scripts already ran.
+            var content = document.querySelector('.content');
+            if (content) {
+                content.addEventListener('dblclick', function () {
+                    var w = (window.getSelection ? getSelection().toString() : '').trim();
+                    if (w) { form.q.value = w; form.submit(); }
+                });
+                if (q && window.Mark) {
+                    try {
+                        new Mark(content).markRegExp(
+                            new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                            { element: 'mark' });
+                    } catch (e) { }
+                }
+            }
+
+            // ── sticky auto-hide (headroom pattern) ──
+            if (SEARCHBAR_MODE === 'autohide') {
+                var bar = document.getElementById('bar');
+                var lastY = 0, ticking = false;
+                addEventListener('scroll', function () {
+                    if (ticking) return;
+                    ticking = true;
+                    requestAnimationFrame(function () {
+                        var y = scrollY < 0 ? 0 : scrollY, d = y - lastY;
+                        if (y < 8 || d < -6) bar.classList.remove('is-hidden');
+                        else if (d > 6 && y > bar.offsetHeight) bar.classList.add('is-hidden');
+                        lastY = y;
+                        ticking = false;
+                    });
+                }, { passive: true });
+            }
+        })();
+    </script>
+</body>
+
+</html>
