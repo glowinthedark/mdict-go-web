@@ -272,7 +272,19 @@
                 var params = new URLSearchParams(document.location.search);
 
                 const path = params.get("path");
-                form.path.value = path;
+                if (path) {
+                    form.path.value = path;
+                    localStorage.setItem('mdict.lastPath', path);
+                } else {
+                    // remember last selected dictionary across visits
+                    var saved = localStorage.getItem('mdict.lastPath');
+                    if (saved && [...form.path.options].some(o => o.value === saved)) {
+                        form.path.value = saved;
+                    }
+                }
+                form.path.addEventListener('change', function () {
+                    localStorage.setItem('mdict.lastPath', form.path.value);
+                });
                 var term = params.get('q');
 
                 if (term) {
@@ -303,6 +315,7 @@
             });
         }
     </script>
+$$${{{DICT_HEAD}}}
 </head>
 
 <body>

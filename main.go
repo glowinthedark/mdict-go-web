@@ -50,20 +50,23 @@ var templateHTML string
 //go:embed web/mark.min.js
 var markJS []byte
 
+const appVersion = "0.5"
+
 const (
 	maxItemsDefault        = 42
 	configFileName         = "config.toml"
 	dictNamePlaceholder    = "$$${{{DICT_NAME}}}"
 	dictOptionsPlaceholder = "$$${{{DICT_OPTIONS}}}"
+	dictHeadPlaceholder    = "$$${{{DICT_HEAD}}}"
 )
 
-// Resolved configuration — set once in main, read-only thereafter.
+// Configs
 var (
 	dictDir      string // absolute path to .mdx/.mdd directory
 	assetRoot    string // absolute path to extracted-asset cache
 	defaultDict  string // absolute path to default dictionary (joined from dictDir + rel)
 	speexDecPath string // absolute path to speexdec binary
-	noBrowser    bool
+	noBrowser    bool   // do not open browser on startup
 )
 
 // Reader cache: server is long-lived; each dictionary parsed once, reused across requests.
@@ -86,7 +89,7 @@ func getReader(p string) (*Reader, error) {
 	return r, nil
 }
 
-// conf resolves a parameter through the full priority chain:
+// conf resolves a parameter in this priority chain:
 // CLI flag → env var → config.toml key → built-in fallback.
 // fval/fset come from flag.FlagSet: fset is true only when the user explicitly passed the flag.
 func conf(fval string, fset bool, key, fallback string) string {
@@ -122,7 +125,7 @@ func dirExists(p string) bool {
 }
 
 func main() {
-	// ── CLI flags ────────────────────────────────────────────────────────────
+	// ── CLI args parsing ───────────────────────────────────────────────────────────────
 	fset := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fset.Usage = usageFn(fset)
 
@@ -134,9 +137,16 @@ func main() {
 	fPort := fset.String("port", "", "server listen port")
 	fSpeexDec := fset.String("speexdec", "", "path to speexdec binary (Speex audio decoding)")
 	fNoBrowser := fset.Bool("no-browser", false, "do not open browser on startup")
+	fVersion := fset.Bool("version", false, "print version and exit")
+	fset.BoolVar(fVersion, "v", false, "print version and exit (shorthand)")
 
 	if err := fset.Parse(os.Args[1:]); err != nil {
-		os.Exit(0) // -h/--help already printed usage
+		os.Exit(0)
+	}
+
+	if *fVersion {
+		fmt.Printf("mdict-go-web v%s\n", appVersion)
+		os.Exit(0)
 	}
 
 	set := map[string]bool{}
@@ -160,12 +170,15 @@ func main() {
 		defaultDict = mustAbs(filepath.Join(dictDir, rel))
 	}
 
-	// Scalar params.
+	// server listen config
 	ip := conf(*fIP, set["ip"], "SERVER_IP", "127.0.0.1")
 	port := conf(*fPort, set["port"], "SERVER_PORT", "8808")
 
-	// --no-browser: flag OR env/toml value of "1".
-	noBrowser = *fNoBrowser || getConf("NO_BROWSER", os.Getenv("NO_BROWSER")) == "1"
+	// --no-browser
+	envVal := getConf("NO_BROWSER", os.Getenv("NO_BROWSER"))
+	envValFlag, _ := strconv.ParseBool(envVal)
+
+	noBrowser = *fNoBrowser || envValFlag
 
 	// ── Asset dir bootstrap ──────────────────────────────────────────────────
 	if !dirExists(assetRoot) {
@@ -177,6 +190,7 @@ func main() {
 
 	// ── Startup summary ──────────────────────────────────────────────────────
 	addr := ip + ":" + port
+	fmt.Printf("version:   v%s\n", appVersion)
 	fmt.Printf("config:    %s\n", configPath)
 	fmt.Printf("dict-dir:  %s\n", dictDir)
 	fmt.Printf("asset-dir: %s\n", assetRoot)
@@ -206,12 +220,13 @@ func main() {
 	}
 }
 
-// usageFn returns the --help handler with full env/toml cross-reference.
+// usage
 func usageFn(_ *flag.FlagSet) func() {
 	return func() {
-		fmt.Fprint(os.Stderr, `mdict-go-web — MDict (.mdx/.mdd) HTTP dictionary server
+		fmt.Fprintf(os.Stderr, `mdict-go-web v%s — MDict (.mdx/.mdd) HTTP dictionary server
 
-USAGE
+USAGE`, appVersion)
+		fmt.Fprint(os.Stderr, `
   mdict-go-web [flags]
 
 FLAGS
@@ -245,6 +260,8 @@ FLAGS
   --no-browser            Do not open a browser tab on startup
                           env/toml: NO_BROWSER=1
 
+  -v, --version           Show version and exit
+
   -h, --help              Show this help and exit
 
 CONFIG FILE SEARCH ORDER
@@ -275,8 +292,7 @@ EXAMPLES
 	}
 }
 
-// ── HTTP handlers ─────────────────────────────────────────────────────────────
-
+// ── HTTP ─────────────────────────────────────────────────────────────
 func handleRoot(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/":
@@ -304,7 +320,7 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	if !dirExists(dictDir) {
-		fmt.Fprintf(w, `<h3 style='color:red'>DICT_DIR not found: %s</h3>
+		fmt.Fprintf(w, `<h3 style='color:red'><tt>DICT_DIR</tt> not found: %s</h3>
 <p>Set the dictionary directory via one of:
 <ol>
 <li>CLI:     <tt>--dict-dir /path/to/dicts</tt></li>
@@ -346,20 +362,31 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 		html = strings.ReplaceAll(html, dictNamePlaceholder, "")
 	}
 	html = strings.ReplaceAll(html, dictOptionsPlaceholder, buildOptions(absPathIn))
-	io.WriteString(w, html+"\n")
 
+	// Build the body and the hoisted head assets before writing, so per-entry
+	// <link>/<script> tags can be lifted into <head> once instead of repeating
+	// in the body for every entry.
+	var body, head string
 	if reader != nil {
 		if q != "" {
-			for _, defi := range reader.search(q, maxN) {
-				reader.extractAssets(defi)
-				io.WriteString(w, defi+"\n")
+			defs := reader.search(q, maxN)
+			for _, defi := range defs {
+				reader.extractAssets(defi) // run on originals, before tags are stripped
+			}
+			var cleaned []string
+			cleaned, head = hoistHeadAssets(defs)
+			body = strings.Join(cleaned, "\n")
+			if body != "" {
+				body += "\n"
 			}
 		} else {
-			io.WriteString(w, "<pre>\n")
-			io.WriteString(w, strings.Join(reader.keywords(maxN), "\n"))
-			io.WriteString(w, "\n</pre>\n")
+			body = "<pre>\n" + strings.Join(reader.keywords(maxN), "\n") + "\n</pre>\n"
 		}
 	}
+
+	html = strings.ReplaceAll(html, dictHeadPlaceholder, head)
+	io.WriteString(w, html+"\n")
+	io.WriteString(w, body)
 	io.WriteString(w, "</div>\n</div>\n</body>\n</html>\n")
 }
 
@@ -399,7 +426,6 @@ func buildOptions(selected string) string {
 }
 
 // ── Config helpers ────────────────────────────────────────────────────────────
-
 func getConfigPath() string {
 	if envPath := os.Getenv("CONFIG_PATH"); envPath != "" {
 		if isFile(envPath) {
@@ -408,14 +434,17 @@ func getConfigPath() string {
 		log.Printf("warning: CONFIG_PATH=%q is not a valid file, ignoring", envPath)
 	}
 	candidates := []func() (string, error){
+		// exec dir
 		func() (string, error) {
 			exe, err := os.Executable()
 			return filepath.Join(filepath.Dir(exe), configFileName), err
 		},
+		// ~/.mdict
 		func() (string, error) {
 			home, err := os.UserHomeDir()
 			return filepath.Join(home, ".mdict", configFileName), err
 		},
+		// /etc/mdict
 		func() (string, error) { return filepath.Join("/etc/mdict", configFileName), nil },
 	}
 	for _, fn := range candidates {

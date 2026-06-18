@@ -41,6 +41,9 @@ var (
 	reSoundSrc   = regexp.MustCompile(`(src|href)=(["'])sound://`)
 	reSpxRef     = regexp.MustCompile(`(?i)((?:src|href)=["'][^"']*?\.spx)(["'])`)
 	reStyleTag   = regexp.MustCompile("`\\d+`")
+	// per-entry <link rel=stylesheet> / <script src=...> tags that belong in <head>
+	reHoist = regexp.MustCompile(`(?is)<link\b[^>]*\brel\s*=\s*["']?stylesheet\b[^>]*>` +
+		`|<script\b[^>]*\bsrc\s*=\s*["'][^"']*["'][^>]*>\s*</script>`)
 )
 
 const audioOnclick = "new Audio(this.href).play(); return false;"
@@ -389,7 +392,12 @@ func (r *Reader) fixDefi(defi string) string {
 func (r *Reader) internalLinkRepl(s string) string {
 	m := reInternal.FindStringSubmatch(s)
 	q, word := m[1], m[2]
-	return "href=" + q + "?path=" + pyQuote(r.filename) + "&amp;q=" + pyQuote(word) + q
+	// ?path= is interpreted relative to dictDir on the server (handlePage).
+	dictPathRel, err := filepath.Rel(dictDir, r.filename)
+	if err != nil {
+		dictPathRel = r.filename // not under dictDir: fall back to absolute
+	}
+	return "href=" + q + "?path=" + pyQuote(filepath.ToSlash(dictPathRel)) + "&amp;q=" + pyQuote(word) + q
 }
 
 func audioTagRepl(s string) string {
@@ -594,6 +602,29 @@ func (r *Reader) transcodeSpx(srcNorm, destNorm string, index map[string]resHit)
 		}
 		fmt.Fprintf(os.Stderr, "spx transcode failed for %s: %v\n", srcNorm, err)
 	}
+}
+
+// hoistHeadAssets strips per-entry <link rel=stylesheet> and <script src> tags
+// from each definition and returns the cleaned definitions plus the deduped set
+// of tags to inject once into <head> (instead of repeating them per entry in the
+// body). Asset extraction must run on the originals before calling this.
+func hoistHeadAssets(defs []string) (cleaned []string, head string) {
+	seen := map[string]bool{}
+	var b strings.Builder
+	cleaned = make([]string, 0, len(defs))
+	for _, d := range defs {
+		d = reHoist.ReplaceAllStringFunc(d, func(tag string) string {
+			key := strings.Join(strings.Fields(tag), " ") // normalize whitespace for dedup
+			if !seen[key] {
+				seen[key] = true
+				b.WriteString(tag)
+				b.WriteByte('\n')
+			}
+			return ""
+		})
+		cleaned = append(cleaned, d)
+	}
+	return cleaned, b.String()
 }
 
 // keywords returns the first n headwords, for the bare key listing.
