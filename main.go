@@ -69,10 +69,10 @@ var templateHTML string
 //go:embed web/mark.min.js
 var markJS []byte
 
-const appVersion = "0.53"
+const appVersion = "0.55"
 
 const (
-	maxItemsDefault        = 53
+	maxItemsDefault        = 55
 	configFileName         = "config.toml"
 	dictNamePlaceholder    = "$$${{{DICT_NAME}}}"
 	dictOptionsPlaceholder = "$$${{{DICT_OPTIONS}}}"
