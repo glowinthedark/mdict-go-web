@@ -201,13 +201,6 @@
             padding: var(--sp-md) var(--sp);
         }
 
-        .dict-name {
-            margin: 0 0 var(--sp);
-            text-align: right;
-            font-size: var(--t-sm);
-            color: var(--muted);
-        }
-
         .empty {
             margin-top: var(--sp-lg);
             text-align: center;
@@ -286,9 +279,9 @@
     <div class="app">
     <header class="bar" id="bar">
         <form action="#" name="frm" role="search">
-            <input class="q" id="q" name="q" type="search" placeholder="Search…" autocomplete="off"
+            <input class="q" id="q" name="q" type="search" placeholder="$$${{{DICT_NAME}}}" autocomplete="off"
                 autocapitalize="off" autocorrect="off" spellcheck="false" autofocus>
-            <select class="sel" id="path" name="path" title="Dictionary">$$${{{DICT_OPTIONS}}}</select>
+            <select class="sel" id="path" name="path" title="$$${{{DICT_NAME}}}">$$${{{DICT_OPTIONS}}}</select>
             <button class="iconbtn go" type="submit" title="Search" aria-label="Search">
                 <svg viewBox="0 0 24 24">
                     <circle cx="11" cy="11" r="7" />
@@ -308,7 +301,6 @@
     </header>
 
     <main class="wrap">
-        <p class="dict-name">$$${{{DICT_NAME}}}</p>
         $$${{{DICT_BODY}}}
     </main>
     </div>
