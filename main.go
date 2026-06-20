@@ -349,14 +349,21 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	qv := r.URL.Query()
-	q := qv.Get("q")
-	maxN := maxItemsDefault
-	if m := qv.Get("max"); m != "" {
-		if n, err := strconv.Atoi(m); err == nil {
-			maxN = n
-		}
-	}
+    qv := r.URL.Query()
+    q := qv.Get("q")
+    maxN := maxItemsDefault
+    if m := qv.Get("max"); m != "" {
+        if n, err := strconv.Atoi(m); err == nil {
+            maxN = n
+        }
+    }
+
+    offset := 0
+    if o := qv.Get("offset"); o != "" {
+        if n, err := strconv.Atoi(o); err == nil && n >= 0 {
+            offset = n
+        }
+    }
 
 	// ?path= is relative to dictDir; falls back to configured defaultDict (already absolute).
 	var absPathIn string
@@ -391,7 +398,7 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 	page := templateHTML
 	page = strings.ReplaceAll(page, dictNamePlaceholder, html.EscapeString(name))
 	page = strings.ReplaceAll(page, dictOptionsPlaceholder, buildOptions(absPathIn))
-	page = strings.ReplaceAll(page, dictBodyPlaceholder, renderBody(reader, q, maxN, relPath))
+    page = strings.ReplaceAll(page, dictBodyPlaceholder, renderBody(reader, q, maxN, offset, relPath))
 	io.WriteString(w, page)
 }
 
@@ -401,20 +408,65 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 // -rendered <script> tags execute, so interactive content (collapsibles) works
 // and the theme cascade reaches the definitions. The per-dict <link>/<script src>
 // tags are still deduped so they don't repeat once per entry.
-func renderBody(reader *Reader, q string, maxN int, relPath string) string {
+func renderBody(reader *Reader, q string, maxN int, offset int, relPath string) string {
 	if reader == nil {
 		return `<p class="empty">Select a dictionary to begin.</p>`
 	}
-	if q == "" {
-		var b strings.Builder
-		b.WriteString(`<ul class="keywords">`)
-		for _, k := range reader.keywords(maxN) {
-			fmt.Fprintf(&b, `<li><a href="?path=%s&amp;q=%s">%s</a></li>`,
-				pyQuote(relPath), pyQuote(k), html.EscapeString(k))
-		}
-		b.WriteString(`</ul>`)
-		return b.String()
-	}
+    if q == "" {
+        var b strings.Builder
+        b.WriteString(`<ul class="keywords">`)
+        keys := reader.keywordsOffset(offset, maxN)
+        for _, k := range keys {
+            fmt.Fprintf(&b, `<li><a href="?path=%s&amp;q=%s">%s</a></li>`,
+                pyQuote(relPath), pyQuote(k), html.EscapeString(k))
+        }
+        b.WriteString(`</ul>`)
+
+        // pager
+        total := len(reader.mdxEntries)
+        hasPrev := offset > 0
+        hasNext := offset+len(keys) < total
+
+        if hasPrev || hasNext {
+            b.WriteString(`<div class="pager">`)
+            // jump to start
+            if hasPrev {
+                fmt.Fprintf(&b, `<a class="start" href="?path=%s&amp;offset=0&amp;max=%d">&laquo;</a>`, pyQuote(relPath), maxN)
+            }
+            if hasPrev {
+                prev := offset - maxN
+                if prev < 0 {
+                    prev = 0
+                }
+                fmt.Fprintf(&b, `<a class="prev" href="?path=%s&amp;offset=%d&amp;max=%d">&#8249;</a>`, pyQuote(relPath), prev, maxN)
+            }
+            if hasNext {
+                next := offset + maxN
+                fmt.Fprintf(&b, `<a class="next" href="?path=%s&amp;offset=%d&amp;max=%d">&#8250;</a>`, pyQuote(relPath), next, maxN)
+            }
+            // jump to end
+            if hasNext {
+                last := total - (total % maxN)
+                if last == total {
+                    last = total - maxN
+                }
+                if last < 0 {
+                    last = 0
+                }
+                fmt.Fprintf(&b, `<a class="end" href="?path=%s&amp;offset=%d&amp;max=%d">&raquo;</a>`, pyQuote(relPath), last, maxN)
+            }
+            // range label
+            start := offset + 1
+            end := offset + len(keys)
+            if len(keys) == 0 {
+                start = 0
+            }
+            fmt.Fprintf(&b, `<span class="range">%d–%d / %s</span>`, start, end, compactNum(total))
+            b.WriteString(`</div>`)
+        }
+
+        return b.String()
+    }
 	defs := reader.search(q, maxN)
 	for _, defi := range defs {
 		reader.extractAssets(defi) // run on originals, before tags are stripped
@@ -459,6 +511,17 @@ func buildOptions(selected string) string {
 		fmt.Fprintf(&b, `<option%s value="%s">%s</option>`, sel, filepath.ToSlash(rel), filepath.Base(f))
 	}
 	return b.String()
+}
+
+// compactNum formats large numbers like 120k, 1.2M
+func compactNum(n int) string {
+    if n >= 1_000_000 {
+        return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+    }
+    if n >= 1_000 {
+        return fmt.Sprintf("%.1fk", float64(n)/1_000)
+    }
+    return strconv.Itoa(n)
 }
 
 // ── Config helpers ────────────────────────────────────────────────────────────

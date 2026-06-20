@@ -227,6 +227,33 @@
             color: var(--accent);
         }
 
+        /* pager */
+        .pager {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            margin: var(--sp-md) 0;
+        }
+
+        .pager a {
+            text-decoration: none;
+            color: var(--accent);
+            border: 1px solid var(--border);
+            padding: var(--sp-xs) var(--sp-sm);
+            border-radius: var(--radius);
+            background: var(--surface);
+        }
+
+        .pager a:hover {
+            background: var(--bg);
+        }
+
+        .range {
+            font-size: var(--t-sm);
+            color: var(--muted);
+            padding-left: .5em;
+        }
+
         /* dictionary content (single DOM: the dict's own css/js applies on purpose,
            and the light/dark theme cascade reaches it) */
         .content {
@@ -279,7 +306,7 @@
     <div class="app">
     <header class="bar" id="bar">
         <form action="#" name="frm" role="search">
-            <input class="q" id="q" name="q" type="search" placeholder="$$${{{DICT_NAME}}}" autocomplete="off"
+            <input class="q" id="q" name="q" type="search" placeholder="$$${{{DICT_NAME}}}" autocomplete="off" title="$$${{{DICT_NAME}}}"
                 autocapitalize="off" autocorrect="off" spellcheck="false" autofocus>
             <select class="sel" id="path" name="path" title="$$${{{DICT_NAME}}}">$$${{{DICT_OPTIONS}}}</select>
             <button class="iconbtn go" type="submit" title="Search" aria-label="Search">
@@ -317,6 +344,19 @@
             var params = new URLSearchParams(location.search);
             var q = params.get('q');
             var path = params.get('path');
+            
+            // keyboard navigation (left/right)
+            document.addEventListener('keydown', function (e) {
+                if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+                if (e.key === 'ArrowLeft') {
+                    var prev = document.querySelector('.pager a.prev');
+                    if (prev) window.location = prev.href;
+                }
+                if (e.key === 'ArrowRight') {
+                    var next = document.querySelector('.pager a.next');
+                    if (next) window.location = next.href;
+                }
+            });
 
             // ── restore controls from URL / localStorage ──
             if (q) form.q.value = q;

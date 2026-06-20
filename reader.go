@@ -647,14 +647,33 @@ func hoistHeadAssets(defs []string) (cleaned []string, head string) {
 
 // keywords returns the first n headwords, for the bare key listing.
 func (r *Reader) keywords(n int) []string {
-	if n > len(r.mdxEntries) {
-		n = len(r.mdxEntries)
-	}
-	out := make([]string, 0, n)
-	for _, e := range r.mdxEntries[:n] {
-		out = append(out, e.KeyWord)
-	}
-	return out
+    if n > len(r.mdxEntries) {
+        n = len(r.mdxEntries)
+    }
+    out := make([]string, 0, n)
+    for _, e := range r.mdxEntries[:n] {
+        out = append(out, e.KeyWord)
+    }
+    return out
+}
+
+// keywordsOffset returns n headwords starting from offset.
+func (r *Reader) keywordsOffset(offset, n int) []string {
+    if offset < 0 {
+        offset = 0
+    }
+    if offset >= len(r.mdxEntries) {
+        return nil
+    }
+    end := offset + n
+    if end > len(r.mdxEntries) {
+        end = len(r.mdxEntries)
+    }
+    out := make([]string, 0, end-offset)
+    for _, e := range r.mdxEntries[offset:end] {
+        out = append(out, e.KeyWord)
+    }
+    return out
 }
 
 // ---- small helpers ------------------------------------------------------------
