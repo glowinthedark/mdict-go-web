@@ -348,6 +348,12 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			panic(err)
 		}
+
+		curDir, err := os.Getwd()
+		if err != nil {
+			// handle error (e.g., permissions, directory deleted)
+			panic(err)
+		}
 		fmt.Fprintf(w, `<h3 style='color:red'><tt>DICT_DIR</tt> not found: %s</h3>
 <p>Set the dictionary directory via one of:
 <ol>
@@ -358,12 +364,17 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 <pre>
 CONFIG FILE SEARCH ORDER
   1. --config flag / CONFIG_PATH env var
-  2. %s/config.toml
-  3. %s/.mdict/config.toml
-  4. /etc/mdict/config.toml
-  5. ./config.toml
+  2. %s
+  3. %s
+  4. %s
+  5. /etc/mdict/config.toml (linux/macOS only)
   </pre>
-	`, dictDir, filepath.FromSlash(execDir), filepath.FromSlash(homeDir))
+	`,
+			dictDir,
+			filepath.Join(execDir, configFileName),
+			filepath.Join(homeDir, ".mdict", configFileName),
+			filepath.Join(curDir, configFileName),
+		)
 		return
 	}
 
