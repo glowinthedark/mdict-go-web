@@ -17,41 +17,109 @@
 package go_mdict
 
 import (
-	"encoding/xml"
+	"regexp"
 	"strings"
 )
 
-// Dictionary was generated 2023-09-11 11:07:50 by https://xml-to-go.github.io/ in Ukraine.
+// Dictionary holds the attributes parsed from the MDict header.
+//
+// v1/v2 headers use the <Dictionary ...> root tag; v3 headers use <ZDB ...>.
+// Rather than fighting encoding/xml's strict root-tag matching, we parse the
+// attributes with a regex (mirroring the reference Python reader's
+// _parse_header) so both root tags work uniformly.
 type Dictionary struct {
-	XMLName                  xml.Name `xml:"Dictionary"`
-	Text                     string   `xml:"chardata"`
-	GeneratedByEngineVersion string   `xml:"GeneratedByEngineVersion,attr"`
-	RequiredEngineVersion    string   `xml:"RequiredEngineVersion,attr"`
-	Encrypted                string   `xml:"Encrypted,attr"`
+	GeneratedByEngineVersion string
+	RequiredEngineVersion    string
+	Encrypted                string
 	// NOTE: the real text encoding lives in the "Encoding" attribute; the
 	// upstream code mapped this field to "IsUTF16" by mistake, which silently
 	// misdetected every non-UTF16 dictionary (e.g. GBK) as UTF-8.
-	Encoding string `xml:"Encoding,attr"`
-	IsUTF16  string `xml:"IsUTF16,attr"`
-	Format   string `xml:"Format,attr"`
-	Stripkey                 string   `xml:"Stripkey,attr"`
-	CreationDate             string   `xml:"creationDate,attr"`
-	Compact                  string   `xml:"Compact,attr"`
-	Compat                   string   `xml:"Compat,attr"`
-	KeyCaseSensitive         string   `xml:"KeyCaseSensitive,attr"`
-	Description              string   `xml:"Description,attr"`
-	Title                    string   `xml:"Title,attr"`
-	DataSourceFormat         string   `xml:"DataSourceFormat,attr"`
-	StyleSheet               string   `xml:"StyleSheet,attr"`
-	Left2Right               string   `xml:"Left2Right,attr"`
-	RegisterBy               string   `xml:"RegisterBy,attr"`
+	Encoding          string
+	IsUTF16           string
+	Format            string
+	Stripkey          string
+	CreationDate      string
+	Compact           string
+	Compat            string
+	KeyCaseSensitive  string
+	Description       string
+	Title             string
+	DataSourceFormat  string
+	StyleSheet        string
+	Left2Right        string
+	RegisterBy        string
+	UUID              string
+	ContentType       string
+	DefaultSortingLocale string
+}
+
+// headerAttrRe matches `name="value"` pairs inside the header tag.
+var headerAttrRe = regexp.MustCompile(`(\w+)="(.*?)"`)
+
+// unescapeEntities reverses the five standard XML predefined entities. The
+// MDict header never uses numeric character references, so we don't bother
+// with them either.
+func unescapeEntities(s string) string {
+	r := strings.NewReplacer(
+		"&lt;", "<",
+		"&gt;", ">",
+		"&amp;", "&",
+		"&apos;", "'",
+		"&quot;", `"`,
+	)
+	return r.Replace(s)
 }
 
 func parseXMLHeader(xmldata string) (*Dictionary, error) {
 	dic := &Dictionary{}
-	err := xml.Unmarshal([]byte(strings.TrimSpace(xmldata)), dic)
-	if err != nil {
-		return nil, err
+	for _, m := range headerAttrRe.FindAllStringSubmatch(xmldata, -1) {
+		if len(m) != 3 {
+			continue
+		}
+		key := m[1]
+		val := unescapeEntities(m[2])
+		switch key {
+		case "GeneratedByEngineVersion":
+			dic.GeneratedByEngineVersion = val
+		case "RequiredEngineVersion":
+			dic.RequiredEngineVersion = val
+		case "Encrypted":
+			dic.Encrypted = val
+		case "Encoding":
+			dic.Encoding = val
+		case "IsUTF16":
+			dic.IsUTF16 = val
+		case "Format":
+			dic.Format = val
+		case "Stripkey", "StripKey":
+			dic.Stripkey = val
+		case "creationDate", "CreationDate":
+			dic.CreationDate = val
+		case "Compact":
+			dic.Compact = val
+		case "Compat":
+			dic.Compat = val
+		case "KeyCaseSensitive":
+			dic.KeyCaseSensitive = val
+		case "Description":
+			dic.Description = val
+		case "Title":
+			dic.Title = val
+		case "DataSourceFormat":
+			dic.DataSourceFormat = val
+		case "StyleSheet":
+			dic.StyleSheet = val
+		case "Left2Right":
+			dic.Left2Right = val
+		case "RegisterBy":
+			dic.RegisterBy = val
+		case "UUID":
+			dic.UUID = val
+		case "ContentType":
+			dic.ContentType = val
+		case "DefaultSortingLocale":
+			dic.DefaultSortingLocale = val
+		}
 	}
 	return dic, nil
 }

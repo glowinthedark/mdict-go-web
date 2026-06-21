@@ -55,6 +55,12 @@ func (mdict *Mdict) init() error {
 		return err
 	}
 
+	if mdict.meta.version >= 3.0 {
+		// v3: scan the self-describing block directory instead of the
+		// fixed-layout v1/v2 key-block meta.
+		return mdict.scanV3Blocks()
+	}
+
 	// 读取 key block 元信息
 	err = mdict.readKeyBlockMeta()
 	if err != nil {
@@ -66,6 +72,10 @@ func (mdict *Mdict) init() error {
 
 // BuildIndex 构建索引
 func (mdict *Mdict) BuildIndex() error {
+	if mdict.meta.version >= 3.0 {
+		return mdict.readKeyEntriesV3()
+	}
+
 	err := mdict.readKeyBlockInfo()
 	if err != nil {
 		return err
@@ -158,6 +168,9 @@ func (mdict *Mdict) Lookup(word string) ([]byte, error) {
 func (mdict *Mdict) LocateByKeywordEntry(entry *MDictKeywordEntry) ([]byte, error) {
 	if entry == nil {
 		return nil, errors.New("invalid mdict keyword entry")
+	}
+	if mdict.meta.version >= 3.0 {
+		return mdict.locateByKeywordEntryV3(entry)
 	}
 	return mdict.MdictBase.locateByKeywordEntry(entry)
 }

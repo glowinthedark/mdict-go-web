@@ -48,7 +48,10 @@ func (mdict *MdictBase) readDictHeader() error {
 
 	meta := &mdictMeta{}
 
-	// Handle encryption flag
+	// Handle encryption flag.
+	// v1/v2: "Yes"/"No"; v3 may use "0"/"1"/"2" (integer bits:
+	//   0x00 = no encryption, 0x01 = record-block encrypted,
+	//   0x02 = key-info encrypted).
 	encrypted := headerInfo.Encrypted
 	switch {
 	case encrypted == "" || encrypted == "No":
@@ -56,12 +59,18 @@ func (mdict *MdictBase) readDictHeader() error {
 	case encrypted == "Yes":
 		meta.encryptType = EncryptRecordEnc
 	default:
-		if encrypted[0] == '2' {
-			meta.encryptType = EncryptKeyInfoEnc
-		} else if encrypted[0] == '1' {
-			meta.encryptType = EncryptRecordEnc
+		n, parseErr := strconv.Atoi(encrypted)
+		if parseErr != nil {
+			// fall back to legacy single-char heuristic
+			if encrypted[0] == '2' {
+				meta.encryptType = EncryptKeyInfoEnc
+			} else if encrypted[0] == '1' {
+				meta.encryptType = EncryptRecordEnc
+			} else {
+				meta.encryptType = EncryptNoEnc
+			}
 		} else {
-			meta.encryptType = EncryptNoEnc
+			meta.encryptType = n
 		}
 	}
 
@@ -96,9 +105,19 @@ func (mdict *MdictBase) readDictHeader() error {
 		meta.encoding = EncodingUtf8
 	}
 
+	// v3 is always UTF-8.
+	if meta.version >= 3.0 {
+		meta.encoding = EncodingUtf8
+	}
+
 	// Fix for MDD type
 	if mdict.fileType == MdictTypeMdd {
 		meta.encoding = EncodingUtf16
+	}
+
+	// v3 MDD: override the UTF-16 fix above; v3 is always UTF-8.
+	if meta.version >= 3.0 && mdict.fileType == MdictTypeMdd {
+		meta.encoding = EncodingUtf8
 	}
 
 	// 4 bytes header size + header_bytes_size + 4bytes alder checksum
@@ -109,6 +128,11 @@ func (mdict *MdictBase) readDictHeader() error {
 	meta.creationDate = headerInfo.CreationDate
 	meta.generatedByEngineVersion = headerInfo.GeneratedByEngineVersion
 	meta.stylesheet = headerInfo.StyleSheet
+
+	// v3: stash the UUID so we can derive the encryption key later if needed.
+	if meta.version >= 3.0 {
+		meta.uuid = headerInfo.UUID
+	}
 
 	mdict.meta = meta
 
@@ -148,7 +172,14 @@ func readMDictFileHeader(filename string) (*mdictHeader, error) {
 		return nil, err
 	}
 
-	utfHeaderInfo := littleEndianBinUTF16ToUTF8(headerInfoBytes, 0, int(headerBytesSize))
+	// v1/v2 headers are UTF-16LE ending with \x00\x00; v3 headers are UTF-8
+	// (ending with \x00 or just whitespace). Detect by the trailing NUL pair.
+	var utfHeaderInfo string
+	if len(headerInfoBytes) >= 2 && headerInfoBytes[len(headerInfoBytes)-1] == 0 && headerInfoBytes[len(headerInfoBytes)-2] == 0 {
+		utfHeaderInfo = littleEndianBinUTF16ToUTF8(headerInfoBytes, 0, int(headerBytesSize))
+	} else {
+		utfHeaderInfo = string(headerInfoBytes)
+	}
 	utfHeaderInfo = strings.Replace(utfHeaderInfo, "Library_Data", "Dictionary", 1)
 
 	mdict := &mdictHeader{
@@ -306,51 +337,37 @@ func (mdict *MdictBase) readKeyBlockInfo() error {
 }
 
 func (mdict *MdictBase) decodeKeyBlockInfo(data []byte) error {
-	if data[0] != 2 && data[1] != 0 && data[2] != 0 && data[3] != 0 {
-		return errors.New("check key-block info magic number 2000 failed")
-	}
-	//fmt.Printf("decodeKeyBlockInfo: 4 magic number [%d,%d,%d,%d]\n", data[0], data[1], data[2], data[3])
+	// key block info format differs by engine version:
+	//   v >= 2.0: [4-byte comp type 0x02000000][4-byte adler32][zlib-compressed data]
+	//   v <  2.0: raw uncompressed data (no comp-type tag, no adler32, no decompression)
 
-	// decrypt
+	// decrypt (only v2.x supports key-info encryption; this is a no-op for v1.x)
 	var keyBlockInfoDecryptedBuffer []byte
 	if mdict.meta.encryptType == EncryptKeyInfoEnc {
-		// TODO decode key info
 		keyBlockInfoDecryptedBuffer = mdxDecrypt(data, mdict.keyBlockMeta.keyBlockInfoCompressedSize)
 	} else {
 		keyBlockInfoDecryptedBuffer = data
 	}
 
-	// finally, we need to check adler32 checksum
-	// key_block_info_compressed[4:8] => adler32 checksum
-	//          uint32_t chksum = be_bin_to_u32((unsigned char*) (kb_info_buff +
-	//          4));
-	//          uint32_t adlercs = adler32checksum(key_block_info_uncomp,
-	//          static_cast<uint32_t>(key_block_info_uncomp_len)) & 0xffffffff;
-	//
-	//          assert(chksum == adlercs);
+	var decompressKeyInfoBuffer []byte
 
-	/// here passed, key block info is corrected
-	// TODO decode key block info compressed into keys list
+	if mdict.meta.version >= 2.0 {
+		// v2.x: validate the comp-type magic, then zlib-decompress payload[8:]
+		if data[0] != 2 || data[1] != 0 || data[2] != 0 || data[3] != 0 {
+			return errors.New("check key-block info magic number 0x02000000 failed")
+		}
 
-	// for version 2.0, will compress by zlib, lzo just just for 1.0
-	// key_block_info_buff[0:8] => compress_type
-	// TODO zlib decompress
-	// TODO:
-	// if the size of compressed data original data is unknown,
-	// we malloc 8 size of source data len, we cannot estimate the original data
-	// size
-	// but currently, we know the size of key_block_info decompress size, so we
-	// use this
-
-	// note: we should uncompressed key_block_info_buffer[8:] data, so we need
-	// (decrypted + 8, and length -8)
-
-	decompressKeyInfoBuffer, err := zlibDecompress(keyBlockInfoDecryptedBuffer, 8, mdict.keyBlockMeta.keyBlockInfoCompressedSize-8)
-	if err != nil {
-		return err
-	}
-	if int64(len(decompressKeyInfoBuffer)) != mdict.keyBlockMeta.keyBlockInfoDecompressSize {
-		return errors.New("decoded key block info data size not equals to key block meta indicates key block info size")
+		var err error
+		decompressKeyInfoBuffer, err = zlibDecompress(keyBlockInfoDecryptedBuffer, 8, mdict.keyBlockMeta.keyBlockInfoCompressedSize-8)
+		if err != nil {
+			return err
+		}
+		if int64(len(decompressKeyInfoBuffer)) != mdict.keyBlockMeta.keyBlockInfoDecompressSize {
+			return errors.New("decoded key block info data size not equals to key block meta indicates key block info size")
+		}
+	} else {
+		// v1.x: no compression, no header to skip — the buffer is already the data
+		decompressKeyInfoBuffer = keyBlockInfoDecryptedBuffer
 	}
 
 	// decode key-block entries
@@ -534,12 +551,10 @@ func (mdict *MdictBase) decodeKeyEntries(keyBlockDataCompressBuffer []byte) erro
 			key_block = keyBlockDataCompressBuffer[start+8 : end]
 
 		} else if kbCompType[0] == 1 {
-			// TODO the second part
-			header := []byte{0xf0, byte(int(decompressedSize))}
-			// # decompress key block
-			reader := bytes.NewReader(append(header, keyBlockDataCompressBuffer[start+8:end]...))
-
-			out, err1 := lzo.Decompress1X(reader, 0, 0 /* decompressedSize, 1308672*/)
+			// LZO1X: go-lzo expects raw LZO1X data (no MDict \xf0 prefix),
+			// with the decompressed size passed as an outLen hint.
+			raw := keyBlockDataCompressBuffer[start+8 : end]
+			out, err1 := lzo.Decompress1X(bytes.NewReader(raw), len(raw), int(decompressedSize))
 			if err1 != nil {
 				return err1
 			}
@@ -640,6 +655,10 @@ func (mdict *MdictBase) splitKeyBlock(keyBlock []byte) []*MDictKeywordEntry {
 				panic(err)
 			}
 		}
+
+		// v1.x (and some UTF-16 v2.x) dicts pad keys with leading/trailing
+		// spaces; the reference reader strips them so lookups match.
+		keyText = strings.TrimSpace(keyText)
 
 		keyStartIndex = keyEndIndex + width
 		keyList = append(keyList, &MDictKeywordEntry{
@@ -971,12 +990,9 @@ func locateDefByKWIndex(index *MDictKeywordIndex, filePath string, isRecordEncry
 
 		// decompress
 		if rbCompType[0] == 1 {
-			// TODO the second part
-			header := []byte{0xf0, byte(int(index.RecordBlock.CompressSize))}
-			// # decompress key block
-			reader := bytes.NewReader(append(header, blockBufDecrypted...))
-
-			out, err1 := lzo.Decompress1X(reader, 0, 0 /* decompressedSize, 1308672*/)
+			// LZO1X: go-lzo expects raw LZO1X data (no MDict \xf0 prefix),
+			// with the decompressed size passed as an outLen hint.
+			out, err1 := lzo.Decompress1X(bytes.NewReader(blockBufDecrypted), len(blockBufDecrypted), int(index.RecordBlock.DeCompressSize))
 			if err1 != nil {
 				log.Errorf("stopped by Decompress1X %s", err1.Error())
 				return nil, err1
@@ -1091,12 +1107,9 @@ func (mdict *MdictBase) locateByKeywordEntry(item *MDictKeywordEntry) ([]byte, e
 
 		// decompress
 		if rbCompType[0] == 1 {
-			// TODO the second part
-			header := []byte{0xf0, byte(int(recordBlockInfo.compressSize))}
-			// # decompress key block
-			reader := bytes.NewReader(append(header, blockBufDecrypted...))
-
-			out, err1 := lzo.Decompress1X(reader, 0, 0 /* decompressedSize, 1308672*/)
+			// LZO1X: go-lzo expects raw LZO1X data (no MDict \xf0 prefix),
+			// with the decompressed size passed as an outLen hint.
+			out, err1 := lzo.Decompress1X(bytes.NewReader(blockBufDecrypted), len(blockBufDecrypted), int(recordBlockInfo.deCompressSize))
 			if err1 != nil {
 				return nil, err1
 			}

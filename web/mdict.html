@@ -346,15 +346,22 @@
             var path = params.get('path');
             
             // keyboard navigation (left/right)
+            // works both when focus is outside the search field AND when the
+            // search field is focused but empty (in which case ArrowLeft/Right
+            // do nothing useful in it anyway, so we hijack them for paging).
             document.addEventListener('keydown', function (e) {
-                if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-                if (e.key === 'ArrowLeft') {
-                    var prev = document.querySelector('.pager a.prev');
-                    if (prev) window.location = prev.href;
+                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                var t = e.target;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+                    // only delegate from the search input when it's empty;
+                    // otherwise let the user move the text cursor normally.
+                    if (t !== form.q || (t.value && t.value.length)) return;
                 }
-                if (e.key === 'ArrowRight') {
-                    var next = document.querySelector('.pager a.next');
-                    if (next) window.location = next.href;
+                var link = document.querySelector('.pager a.' +
+                    (e.key === 'ArrowLeft' ? 'prev' : 'next'));
+                if (link) {
+                    e.preventDefault();
+                    window.location = link.href;
                 }
             });
 

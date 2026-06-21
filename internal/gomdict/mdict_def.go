@@ -78,6 +78,11 @@ type mdictMeta struct {
 	creationDate             string
 	generatedByEngineVersion string
 	stylesheet               string
+
+	// v3-only fields
+	uuid          string
+	encryptedKey  []byte // derived from UUID for v3 encrypted blocks; nil otherwise
+	v3Offsets     *v3BlockOffsets // file offsets of v3 block sections (nil for v1/v2)
 }
 
 type mdictKeyBlockMeta struct {
