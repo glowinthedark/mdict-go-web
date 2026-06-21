@@ -69,9 +69,9 @@ var templateHTML string
 //go:embed web/mark.min.js
 var markJS []byte
 
-const appVersion = "0.56"
-
 const (
+	appName                = "mdict-go-web"
+	appVersion             = "0.56"
 	maxItemsDefault        = 42
 	configFileName         = "config.toml"
 	dictNamePlaceholder    = "$$${{{DICT_NAME}}}"
@@ -164,7 +164,7 @@ func main() {
 	}
 
 	if *fVersion {
-		fmt.Printf("mdict-go-web v%s\n", appVersion)
+		fmt.Printf("%s v%s\n", appName, appVersion)
 		os.Exit(0)
 	}
 
@@ -354,7 +354,8 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 			// handle error (e.g., permissions, directory deleted)
 			panic(err)
 		}
-		fmt.Fprintf(w, `<h3 style='color:red'><tt>DICT_DIR</tt> not found: %s</h3>
+		fmt.Fprintf(w, `<h1>%s v%s</h1>
+<h3 style='color:red'><tt>DICT_DIR</tt> not found: %s</h3>
 <p>Set the dictionary directory via one of:
 <ol>
 <li>CLI:     <tt>--dict-dir /path/to/dicts</tt></li>
@@ -370,6 +371,7 @@ CONFIG FILE SEARCH ORDER
   5. /etc/mdict/config.toml (linux/macOS only)
   </pre>
 	`,
+			appName, appVersion,
 			dictDir,
 			filepath.Join(execDir, configFileName),
 			filepath.Join(homeDir, ".mdict", configFileName),
