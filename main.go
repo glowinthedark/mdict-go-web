@@ -71,7 +71,7 @@ var markJS []byte
 
 const (
 	appName                = "mdict-go-web"
-	appVersion             = "0.56"
+	appVersion             = "0.57"
 	maxItemsDefault        = 42
 	configFileName         = "config.toml"
 	dictNamePlaceholder    = "$$${{{DICT_NAME}}}"
