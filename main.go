@@ -363,7 +363,7 @@ CONFIG FILE SEARCH ORDER
   4. /etc/mdict/config.toml
   5. ./config.toml
   </pre>
-	`, dictDir, execDir, homeDir)
+	`, dictDir, filepath.FromSlash(execDir), filepath.FromSlash(homeDir))
 		return
 	}
 
