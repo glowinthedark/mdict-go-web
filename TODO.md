@@ -1,0 +1,4 @@
+1. BUG: fix absolute currentDict path for entry:// and links; Links are generated with absolute dict path: <a href="?path=/Users/718636/Downloads/Language/mdict/GTer-7-in-1-Dictionaries_v1/%5B%E8%8B%B1-%E8%8B%B1%5D%20%E3%80%90%E5%9B%9E%E6%94%B6%E3%80%91%5BGTer%27s%5D7%20in%201%20Dictionaries_v1.mdx&amp;q=0OL_stern">stern</a> <<<< this is WRONG; path must be relative to DICT_DIR
+2.  for multiple entries CSS and .js are injected multiple times in the WRONG PLACE inside the `<body>` for each entry!
+    TODO: remove <link rel="stylesheet" href="style.css"> from each entry and put into HEAD ONCE FOR ALL ENTRIES
+3. NICE TO HAVE: remember last selected dictionary using simple JS localstorage
