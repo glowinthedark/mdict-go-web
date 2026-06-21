@@ -344,8 +344,17 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 <ol>
 <li>CLI:     <tt>--dict-dir /path/to/dicts</tt></li>
 <li>Env var: <tt>DICT_DIR=/path/to/dicts</tt></li>
-<li>TOML:    <tt>DICT_DIR = "/path/to/dicts"</tt></li>
-</ol>`, dictDir)
+<li>in <tt>config.toml<tt>:    <tt>DICT_DIR = "/path/to/dicts"</tt></li>
+</ol>
+<pre>
+CONFIG FILE SEARCH ORDER
+  1. --config flag / CONFIG_PATH env var
+  2. <executable-dir>/config.toml
+  3. %s/.mdict/config.toml
+  4. /etc/mdict/config.toml
+  5. ./config.toml
+  </pre>
+	`, dictDir, os.UserHomeDir())
 		return
 	}
 
