@@ -6,10 +6,6 @@ on:
       tag:
         description: "Tag for the release (e.g., v0.1)"
         required: false
-      release_name:
-        description: "mdict-go-web"
-        required: false
-        default: "mdict-go-web"
 
 permissions:
   contents: write
@@ -122,6 +118,6 @@ jobs:
           else
             echo "Creating release ${TAG}."
             gh release create "${TAG}" artifacts/* \
-              --title "${{ inputs.release_name }} ${TAG}" \
+              --title "${{ github.event.repository.name }} ${TAG}" \
               --generate-notes
           fi
