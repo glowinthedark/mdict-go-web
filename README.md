@@ -19,7 +19,7 @@ Configuration parameters can be set in `config.toml` or via env vars (which take
 | config file | `--config` | `CONFIG_PATH` | `(auto-detect)` |
 
 ## Build from github
-With a working [golang env](https://go.dev/doc/install):
+Install latest version (assumes a working [golang env](https://go.dev/doc/install)):
 
 ```sh
 go install github.com/glowinthedark/mdict-go-web@latest
