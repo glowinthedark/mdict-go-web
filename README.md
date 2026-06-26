@@ -56,7 +56,7 @@ Open in browser:
 ## Usage
 Select a dictionary from the dropdown and click search. 
 
-To display a browsable listing of all entries in the dictionary click the 🔎 button with an empty search term.
+To display a browsable listing of all entries click the 🔎 button with an empty search term.
 
 Double-click any word in an entry to look it up in the current dictionary.
 
