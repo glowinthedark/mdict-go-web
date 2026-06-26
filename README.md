@@ -53,6 +53,11 @@ Open in browser:
 
 - http://localhost:8808
 
+## Usage
+Select a dictionary from the dropdown and click search. 
+
+To display a browsable listing of all entries in the dictionary click the 🔎 button with an empty search term.
+
 ## Help
 
 ```sh
