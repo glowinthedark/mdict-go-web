@@ -43,6 +43,7 @@
 package main
 
 import (
+	"bufio"
 	_ "embed"
 	"flag"
 	"fmt"
@@ -55,6 +56,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,7 +73,7 @@ var markJS []byte
 
 const (
 	appName                = "mdict-go-web"
-	appVersion             = "0.57"
+	appVersion             = "0.58"
 	maxItemsDefault        = 42
 	configFileName         = "config.toml"
 	dictNamePlaceholder    = "$$${{{DICT_NAME}}}"
@@ -181,6 +183,9 @@ func main() {
 	// ── Resolve parameters (CLI > env > toml > default) ─────────────────────
 	// Path params run through mustAbs (handles ~ expansion + absolutization).
 	dictDir = mustAbs(conf(*fDictDir, set["dict-dir"], "DICT_DIR", "~/Dictionaries"))
+	if !dirExists(dictDir) {
+		dictDir = promptForDictDir(dictDir)
+	}
 	assetRoot = mustAbs(conf(*fAssetDir, set["asset-dir"], "MDICT_TEMP_ASSETS_DIR", "~/.mdict/res"))
 	speexDecPath = mustAbs(conf(*fSpeexDec, set["speexdec"], "SPEEXDEC", "/usr/local/bin/speexdec"))
 
@@ -553,6 +558,128 @@ func compactNum(n int) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1_000)
 	}
 	return strconv.Itoa(n)
+}
+
+// ── Interactive dict-dir resolution ─────────────────────────────────────────
+
+// configSearchPaths returns, in priority order, every location getConfigPath probes
+// for config.toml (excluding the --config/CONFIG_PATH override, which wins outright).
+func configSearchPaths() []string {
+	var paths []string
+	if exe, err := os.Executable(); err == nil {
+		paths = append(paths, filepath.Join(filepath.Dir(exe), configFileName))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".mdict", configFileName))
+	}
+	if runtime.GOOS != "windows" {
+		paths = append(paths, filepath.Join("/etc/mdict", configFileName))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		paths = append(paths, filepath.Join(cwd, configFileName))
+	}
+	return paths
+}
+
+// promptForDictDir runs when dictDir does not resolve to an existing directory.
+// It explains how DICT_DIR is configured, lists every config.toml location that
+// was searched, then loops until a valid directory is entered — persisting the
+// choice to config.toml so future runs don't need to ask again.
+func promptForDictDir(invalid string) string {
+	fmt.Printf("\n%s v%s — dict-dir not found: %s\n\n", appName, appVersion, invalid)
+	fmt.Println("Configure it via (highest priority first):")
+	fmt.Println("  1. CLI flag:    --dict-dir /path/to/dicts")
+	fmt.Println("  2. Env var:     DICT_DIR=/path/to/dicts")
+	fmt.Println(`  3. config.toml: DICT_DIR = "/path/to/dicts"`)
+	fmt.Println("\nconfig.toml search order (none matched):")
+	fmt.Println("  1. --config flag / CONFIG_PATH env var")
+	for i, p := range configSearchPaths() {
+		fmt.Printf("  %d. %s\n", i+2, p)
+	}
+
+	in := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("\nEnter the dictionaries directory now to save it: ")
+		line, _ := in.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if line == "" {
+			fmt.Fprintln(os.Stderr, "no directory entered — exiting.")
+			os.Exit(1)
+		}
+		abs := mustAbs(line)
+		if !dirExists(abs) {
+			fmt.Printf("not a directory: %s\n", abs)
+			continue
+		}
+		if saved, err := saveDictDirToConfig(abs); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not save config: %v\n", err)
+		} else {
+			fmt.Printf("saved DICT_DIR=%s to %s\n", abs, saved)
+		}
+		return abs
+	}
+}
+
+// saveDictDirToConfig persists DICT_DIR to config.toml in the executable's directory
+// if that directory is writable, otherwise in <home>/.mdict/config.toml. Any other
+// existing keys in the target file are preserved.
+func saveDictDirToConfig(dir string) (string, error) {
+	target := ""
+	if exe, err := os.Executable(); err == nil {
+		if execDir := filepath.Dir(exe); dirWritable(execDir) {
+			target = filepath.Join(execDir, configFileName)
+		}
+	}
+	if target == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		target = filepath.Join(home, ".mdict", configFileName)
+	}
+	return target, writeConfigValue(target, "DICT_DIR", dir)
+}
+
+// dirWritable reports whether dir can be written to, by creating and removing a
+// throwaway file — avoids platform-specific permission-bit inspection.
+func dirWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".mdict-write-test-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	f.Close()
+	os.Remove(name)
+	return true
+}
+
+// writeConfigValue creates or updates a single `KEY = "value"` line in path,
+// preserving every other line already present (config.toml has no sections).
+func writeConfigValue(path, key, value string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	var lines []string
+	if data, err := os.ReadFile(path); err == nil {
+		for _, l := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+			if l != "" {
+				lines = append(lines, l)
+			}
+		}
+	}
+	newLine := fmt.Sprintf(`%s = "%s"`, key, value)
+	found := false
+	for i, l := range lines {
+		if k := strings.TrimSpace(strings.SplitN(strings.TrimSpace(l), "=", 2)[0]); k == key {
+			lines[i] = newLine
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append(lines, newLine)
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 }
 
 // ── Config helpers ────────────────────────────────────────────────────────────
